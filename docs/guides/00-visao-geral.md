@@ -80,8 +80,8 @@ antes de *como*. O teste vira a especificação executável. Nestes guias, **eu 
 
 ```bash
 cd ~/Dev/estimate-engine/backend
-npx vitest run src/pricing/money.test.ts   # roda um arquivo
-npx vitest run src/pricing/                 # roda um diretório
+npx vitest run src/domain/pricing/money.test.ts   # roda um arquivo
+npx vitest run src/domain/pricing/                 # roda um diretório
 npm test                                    # roda tudo (vitest run)
 npx vitest                                  # modo watch (re-roda ao salvar)
 ```
@@ -170,6 +170,7 @@ Faça **na ordem** — cada um depende do anterior.
 | 6 | `06-http-api.md` | Fastify, Zod, rotas e camadas |
 | 7 | `07-frontend-calculadora.md` | React + TanStack Query, cálculo ao vivo |
 | 8 | `08-frontend-config.md` | Tela de config + CRUD do catálogo de add-ons |
+| 9 | `09-organizacao-do-projeto.md` | Estrutura de pastas: domain / modules / infra (conceito) |
 
 ## 10. Estrutura de cada guia
 

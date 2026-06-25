@@ -4,17 +4,22 @@
 
 **Goal:** Construir o coração do Estimate Engine — uma engine de preços pura e testada (TDD), exposta por uma API Fastify, com telas React para calcular ao vivo e gerenciar a configuração (rates, multiplicadores, descontos e catálogo de add-ons).
 
-**Architecture:** Backend Node + TypeScript em camadas (`http (Fastify) → repository (Drizzle) → módulo de domínio puro`). A engine de preços (`src/pricing`) não conhece HTTP nem DB. Dinheiro é `number` em cents inteiros. Validação em duas camadas: Zod na fronteira HTTP + `PricingError` na engine. Frontend React (Vite) consome `POST /api/quotes/calculate` (preview ao vivo) e `GET/PUT /api/pricing-config`.
+**Architecture:** Backend Node + TypeScript organizado por papel: `src/domain` (regras puras, sem framework), `src/modules` (features = fatias verticais: rotas + zod + repository), `src/infra` (db, http, env). A engine de preços (`src/domain/pricing`) não conhece HTTP nem DB. Dinheiro é `number` em cents inteiros. Validação em duas camadas: Zod na fronteira HTTP + `PricingError` na engine, mapeado para 400 por um error-handler central. Frontend React (Vite) consome `POST /api/quotes/calculate` (preview ao vivo) e `GET/PUT /api/pricing-config`.
 
 **Tech Stack:** Node 20+, TypeScript (ESM), Fastify, `@fastify/cors`, Zod, Drizzle ORM + drizzle-kit + `pg`, Postgres 15+, Vitest, `tsx`; React 19, Vite, Tailwind v4, TanStack Query, axios.
 
 ## Global Constraints
 
 - Prosa em português (Brasil); código, nomes de campos, identificadores e termos técnicos em inglês.
+- **Estrutura por papel** (ver `docs/guides/09-organizacao-do-projeto.md`):
+  - `src/domain/` — regras de negócio puras (zero framework). Não importa `modules`/`infra`.
+  - `src/modules/<feature>/` — fatias verticais (rotas Fastify + schemas Zod + repository).
+  - `src/infra/` — encanamento (db, http server + plugins, env).
+  - Regra de dependência: `index → infra → modules → domain` (seta sempre pra dentro).
 - Dinheiro **sempre** como `number` inteiro em cents; nunca decimais quebrados. Float só no `serviceMultiplier`/`frequencyDiscount`, com `roundHalfUp` imediato de volta para cents.
 - A API transporta dinheiro como **inteiro em cents** (ex.: `19000` = $190.00). O frontend formata dividindo por 100.
 - O backend é a **fonte da verdade do cálculo**; o frontend nunca reimplementa a fórmula.
-- Backend em **ESM** (`"type": "module"` no package.json). Imports relativos com extensão `.js` no código TS de produção (resolução NodeNext) — ver tsconfig na Task 1.
+- Backend em **ESM** (`"type": "module"`). Imports relativos com extensão `.js` (resolução NodeNext).
 - Decisões de domínio (do spec): multiplicador incide sobre subtotal inteiro (com pets); desconto de frequência incide sobre `afterMultiplier`; add-ons são valor fixo somado após multiplicador e desconto; add-ons configuráveis (catálogo) em JSONB.
 - Golden case (Helena): Deep Clean, One-time, 1000 sqft, 2 quartos, 1 banheiro, 0 pets, sem add-ons → **19000 cents** ($190.00).
 - Spec de referência: `docs/specs/2026-06-22-estimate-engine-calculadora-design.md`.
@@ -26,8 +31,8 @@
 **Files:**
 - Create: `backend/package.json`
 - Create: `backend/tsconfig.json`
-- Create: `backend/src/pricing/money.ts`
-- Test: `backend/src/pricing/money.test.ts`
+- Create: `backend/src/domain/pricing/money.ts`
+- Test: `backend/src/domain/pricing/money.test.ts`
 - Create: `.gitignore`
 
 **Interfaces:**
@@ -39,7 +44,7 @@
 cd ~/Dev/estimate-engine
 git init
 printf "node_modules/\ndist/\n.env\n" > .gitignore
-mkdir -p backend/src/pricing
+mkdir -p backend/src/domain/pricing
 cd backend
 npm init -y
 npm pkg set type="module"
@@ -83,7 +88,7 @@ Adicionar scripts em `backend/package.json` (campo `"scripts"`):
 
 - [ ] **Step 3: Escrever o teste que falha**
 
-`backend/src/pricing/money.test.ts`:
+`backend/src/domain/pricing/money.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
@@ -102,12 +107,12 @@ describe("roundHalfUp", () => {
 
 - [ ] **Step 4: Rodar o teste e verificar que falha**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/pricing/money.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/domain/pricing/money.test.ts`
 Expected: FAIL (`Cannot find module './money.js'`).
 
 - [ ] **Step 5: Implementação mínima**
 
-`backend/src/pricing/money.ts`:
+`backend/src/domain/pricing/money.ts`:
 
 ```ts
 // Money é um valor monetário em cents (inteiro). Nunca use decimais quebrados para dinheiro.
@@ -122,14 +127,14 @@ export function roundHalfUp(value: number): Money {
 
 - [ ] **Step 6: Rodar o teste e verificar que passa**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/pricing/money.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/domain/pricing/money.test.ts`
 Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
 ```bash
 cd ~/Dev/estimate-engine
-git add .gitignore backend/package.json backend/tsconfig.json backend/package-lock.json backend/src/pricing/money.ts backend/src/pricing/money.test.ts
+git add .gitignore backend/package.json backend/tsconfig.json backend/package-lock.json backend/src/domain/pricing/money.ts backend/src/domain/pricing/money.test.ts
 git commit -m "feat(pricing): scaffold backend, Money type and roundHalfUp"
 ```
 
@@ -138,9 +143,9 @@ git commit -m "feat(pricing): scaffold backend, Money type and roundHalfUp"
 ### Task 2: Tipos do domínio + defaultConfig
 
 **Files:**
-- Create: `backend/src/pricing/types.ts`
-- Create: `backend/src/pricing/config.ts`
-- Test: `backend/src/pricing/config.test.ts`
+- Create: `backend/src/domain/pricing/types.ts`
+- Create: `backend/src/domain/pricing/config.ts`
+- Test: `backend/src/domain/pricing/config.test.ts`
 
 **Interfaces:**
 - Consumes: `Money`.
@@ -148,7 +153,7 @@ git commit -m "feat(pricing): scaffold backend, Money type and roundHalfUp"
 
 - [ ] **Step 1: Escrever o teste que falha**
 
-`backend/src/pricing/config.test.ts`:
+`backend/src/domain/pricing/config.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
@@ -168,12 +173,12 @@ describe("defaultConfig", () => {
 
 - [ ] **Step 2: Rodar e verificar que falha**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/pricing/config.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/domain/pricing/config.test.ts`
 Expected: FAIL (`Cannot find module './config.js'`).
 
 - [ ] **Step 3: Implementar os tipos**
 
-`backend/src/pricing/types.ts`:
+`backend/src/domain/pricing/types.ts`:
 
 ```ts
 import type { Money } from "./money.js";
@@ -243,7 +248,7 @@ export interface QuoteBreakdown {
 
 - [ ] **Step 4: Implementar defaultConfig**
 
-`backend/src/pricing/config.ts`:
+`backend/src/domain/pricing/config.ts`:
 
 ```ts
 import type { PricingConfig } from "./types.js";
@@ -279,14 +284,14 @@ export function defaultConfig(): PricingConfig {
 
 - [ ] **Step 5: Rodar e verificar que passa**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/pricing/config.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/domain/pricing/config.test.ts`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 cd ~/Dev/estimate-engine
-git add backend/src/pricing/types.ts backend/src/pricing/config.ts backend/src/pricing/config.test.ts
+git add backend/src/domain/pricing/types.ts backend/src/domain/pricing/config.ts backend/src/domain/pricing/config.test.ts
 git commit -m "feat(pricing): add domain types and defaultConfig"
 ```
 
@@ -295,8 +300,8 @@ git commit -m "feat(pricing): add domain types and defaultConfig"
 ### Task 3: Engine — subtotal (base + sqft + quartos + banheiros + pets)
 
 **Files:**
-- Create: `backend/src/pricing/calculate.ts`
-- Test: `backend/src/pricing/calculate.test.ts`
+- Create: `backend/src/domain/pricing/calculate.ts`
+- Test: `backend/src/domain/pricing/calculate.test.ts`
 
 **Interfaces:**
 - Consumes: tipos da Task 2, `roundHalfUp`.
@@ -304,7 +309,7 @@ git commit -m "feat(pricing): add domain types and defaultConfig"
 
 - [ ] **Step 1: Escrever o teste que falha**
 
-`backend/src/pricing/calculate.test.ts`:
+`backend/src/domain/pricing/calculate.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
@@ -333,12 +338,12 @@ describe("calculate — subtotal", () => {
 
 - [ ] **Step 2: Rodar e verificar que falha**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/pricing/calculate.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/domain/pricing/calculate.test.ts`
 Expected: FAIL (`Cannot find module './calculate.js'`).
 
 - [ ] **Step 3: Implementação mínima (apenas subtotal)**
 
-`backend/src/pricing/calculate.ts`:
+`backend/src/domain/pricing/calculate.ts`:
 
 ```ts
 import { roundHalfUp } from "./money.js";
@@ -362,19 +367,18 @@ export function calculate(input: QuoteInput, config: PricingConfig): QuoteBreakd
 }
 ```
 
-> Nota: o `roundHalfUp` está importado mas ainda não usado — será usado na Task 4. Se o lint
-> reclamar de import não-usado, ignore por ora (a próxima task o utiliza).
+> Nota: `roundHalfUp` está importado mas ainda não usado — será usado na Task 4.
 
 - [ ] **Step 4: Rodar e verificar que passa**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/pricing/calculate.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/domain/pricing/calculate.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd ~/Dev/estimate-engine
-git add backend/src/pricing/calculate.ts backend/src/pricing/calculate.test.ts
+git add backend/src/domain/pricing/calculate.ts backend/src/domain/pricing/calculate.test.ts
 git commit -m "feat(pricing): compute itemized subtotal"
 ```
 
@@ -383,15 +387,15 @@ git commit -m "feat(pricing): compute itemized subtotal"
 ### Task 4: Engine — multiplicador, desconto de frequência e golden case
 
 **Files:**
-- Modify: `backend/src/pricing/calculate.ts`
-- Modify: `backend/src/pricing/calculate.test.ts`
+- Modify: `backend/src/domain/pricing/calculate.ts`
+- Modify: `backend/src/domain/pricing/calculate.test.ts`
 
 **Interfaces:**
 - Produces: `calculate` preenche `serviceMultiplier`, `afterMultiplier`, `frequencyDiscountPct`, `frequencyDiscountAmount` e `total` (sem add-ons ainda).
 
 - [ ] **Step 1: Escrever os testes que falham**
 
-Adicionar em `backend/src/pricing/calculate.test.ts`:
+Adicionar em `backend/src/domain/pricing/calculate.test.ts`:
 
 ```ts
 describe("calculate — multiplicador e desconto", () => {
@@ -422,12 +426,12 @@ describe("calculate — multiplicador e desconto", () => {
 
 - [ ] **Step 2: Rodar e verificar que falham**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/pricing/calculate.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/domain/pricing/calculate.test.ts`
 Expected: FAIL (`total`/`afterMultiplier` = 0).
 
 - [ ] **Step 3: Estender calculate**
 
-Em `backend/src/pricing/calculate.ts`, substituir o `return { ... }` por:
+Em `backend/src/domain/pricing/calculate.ts`, substituir o `return { ... }` por:
 
 ```ts
   const serviceMultiplier = config.serviceMultipliers[input.service];
@@ -448,14 +452,14 @@ Em `backend/src/pricing/calculate.ts`, substituir o `return { ... }` por:
 
 - [ ] **Step 4: Rodar e verificar que passam**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/pricing/calculate.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/domain/pricing/calculate.test.ts`
 Expected: PASS (todos).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd ~/Dev/estimate-engine
-git add backend/src/pricing/calculate.ts backend/src/pricing/calculate.test.ts
+git add backend/src/domain/pricing/calculate.ts backend/src/domain/pricing/calculate.test.ts
 git commit -m "feat(pricing): apply service multiplier and frequency discount"
 ```
 
@@ -464,15 +468,15 @@ git commit -m "feat(pricing): apply service multiplier and frequency discount"
 ### Task 5: Engine — add-ons, desconto manual e piso mínimo
 
 **Files:**
-- Modify: `backend/src/pricing/calculate.ts`
-- Modify: `backend/src/pricing/calculate.test.ts`
+- Modify: `backend/src/domain/pricing/calculate.ts`
+- Modify: `backend/src/domain/pricing/calculate.test.ts`
 
 **Interfaces:**
 - Produces: `calculate` completo — preenche `addOns`, `addOnsTotal`, `manualDiscount` e aplica `Math.max(total, minimumPrice)`.
 
 - [ ] **Step 1: Escrever os testes que falham**
 
-Adicionar em `backend/src/pricing/calculate.test.ts`:
+Adicionar em `backend/src/domain/pricing/calculate.test.ts`:
 
 ```ts
 describe("calculate — add-ons, desconto manual e piso", () => {
@@ -500,12 +504,12 @@ describe("calculate — add-ons, desconto manual e piso", () => {
 
 - [ ] **Step 2: Rodar e verificar que falham**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/pricing/calculate.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/domain/pricing/calculate.test.ts`
 Expected: FAIL.
 
 - [ ] **Step 3: Completar calculate**
 
-Em `backend/src/pricing/calculate.ts`, substituir o trecho que calcula `total` e o `return` por:
+Em `backend/src/domain/pricing/calculate.ts`, substituir o trecho que calcula `total` e o `return` por:
 
 ```ts
   const index = new Map(config.addOns.map((a) => [a.id, a]));
@@ -533,18 +537,18 @@ Em `backend/src/pricing/calculate.ts`, substituir o trecho que calcula `total` e
   };
 ```
 
-Lembre de remover o `return` antigo (da Task 4) para não duplicar.
+Remova o `return` antigo (da Task 4) para não duplicar.
 
-- [ ] **Step 4: Rodar a suíte inteira e verificar que passa**
+- [ ] **Step 4: Rodar a suíte e verificar que passa**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/pricing/`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/domain/pricing/`
 Expected: PASS (todos).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd ~/Dev/estimate-engine
-git add backend/src/pricing/calculate.ts backend/src/pricing/calculate.test.ts
+git add backend/src/domain/pricing/calculate.ts backend/src/domain/pricing/calculate.test.ts
 git commit -m "feat(pricing): add add-ons, manual discount and minimum floor"
 ```
 
@@ -553,16 +557,16 @@ git commit -m "feat(pricing): add add-ons, manual discount and minimum floor"
 ### Task 6: Engine — erros de domínio + validação
 
 **Files:**
-- Create: `backend/src/pricing/errors.ts`
-- Modify: `backend/src/pricing/calculate.ts`
-- Modify: `backend/src/pricing/calculate.test.ts`
+- Create: `backend/src/domain/pricing/errors.ts`
+- Modify: `backend/src/domain/pricing/calculate.ts`
+- Modify: `backend/src/domain/pricing/calculate.test.ts`
 
 **Interfaces:**
-- Produces: classe base `PricingError` + `NegativeInputError`, `UnknownServiceError`, `UnknownFrequencyError`, `UnknownAddOnError`, `InvalidQuantityError`; `calculate` lança o erro apropriado antes de calcular.
+- Produces: `PricingError` (base) + `NegativeInputError`, `UnknownServiceError`, `UnknownFrequencyError`, `UnknownAddOnError`, `InvalidQuantityError`; `calculate` lança o erro apropriado antes de calcular.
 
 - [ ] **Step 1: Escrever os testes que falham**
 
-Adicionar em `backend/src/pricing/calculate.test.ts` (e ajustar imports no topo):
+Adicionar em `backend/src/domain/pricing/calculate.test.ts` (e os imports no topo):
 
 ```ts
 import {
@@ -591,15 +595,15 @@ describe("calculate — validação de domínio", () => {
 
 - [ ] **Step 2: Rodar e verificar que falham**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/pricing/calculate.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/domain/pricing/calculate.test.ts`
 Expected: FAIL (`Cannot find module './errors.js'`).
 
 - [ ] **Step 3: Definir os erros**
 
-`backend/src/pricing/errors.ts`:
+`backend/src/domain/pricing/errors.ts`:
 
 ```ts
-// Erro base do domínio de preços. O handler HTTP mapeia qualquer PricingError para 400.
+// Erro base do domínio de preços. O error-handler HTTP mapeia qualquer PricingError para 400.
 export class PricingError extends Error {}
 
 export class NegativeInputError extends PricingError {
@@ -621,7 +625,7 @@ export class InvalidQuantityError extends PricingError {
 
 - [ ] **Step 4: Validar no início de calculate**
 
-Em `backend/src/pricing/calculate.ts`, adicionar os imports e inserir as checagens como primeiras linhas da função `calculate` (antes de `const base = ...`):
+Em `backend/src/domain/pricing/calculate.ts`, adicionar os imports e inserir as checagens como primeiras linhas de `calculate` (antes de `const base = ...`):
 
 ```ts
 import {
@@ -647,33 +651,33 @@ import {
   }
 ```
 
-- [ ] **Step 5: Rodar a suíte inteira e verificar que passa**
+- [ ] **Step 5: Rodar a suíte e verificar que passa**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/pricing/`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/domain/pricing/`
 Expected: PASS (todos).
 
 - [ ] **Step 6: Commit**
 
 ```bash
 cd ~/Dev/estimate-engine
-git add backend/src/pricing/errors.ts backend/src/pricing/calculate.ts backend/src/pricing/calculate.test.ts
+git add backend/src/domain/pricing/errors.ts backend/src/domain/pricing/calculate.ts backend/src/domain/pricing/calculate.test.ts
 git commit -m "feat(pricing): domain errors and input validation"
 ```
 
 ---
 
-### Task 7: Banco — Drizzle schema, migration e repository
+### Task 7: Infra de dados — Drizzle schema, client e repository do módulo pricing-config
 
 **Files:**
-- Create: `backend/src/db/schema.ts`
-- Create: `backend/src/db/client.ts`
+- Create: `backend/src/infra/db/schema.ts`
+- Create: `backend/src/infra/db/client.ts`
 - Create: `backend/drizzle.config.ts`
-- Create: `backend/src/config/repository.ts`
-- Test: `backend/src/config/repository.test.ts`
+- Create: `backend/src/modules/pricing-config/repository.ts`
+- Test: `backend/src/modules/pricing-config/repository.test.ts`
 - Create: `backend/.env.example`
 
 **Interfaces:**
-- Consumes: `PricingConfig`, `defaultConfig`.
+- Consumes: `PricingConfig`, `defaultConfig` (do `domain/pricing`).
 - Produces: `createDb(connectionString): Db`; `ConfigStore` (interface) com `get(): Promise<PricingConfig>` e `save(config): Promise<void>`; classe `PricingConfigRepository implements ConfigStore`. `get` semeia `defaultConfig` se a tabela estiver vazia.
 
 > **Nota de execução:** requer Postgres local:
@@ -697,12 +701,12 @@ PORT=8080
 
 - [ ] **Step 2: Schema Drizzle**
 
-`backend/src/db/schema.ts`:
+`backend/src/infra/db/schema.ts`:
 
 ```ts
 import { pgTable, smallint, jsonb, timestamp, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { PricingConfig } from "../pricing/types.js";
+import type { PricingConfig } from "../../domain/pricing/types.js";
 
 export const pricingConfig = pgTable(
   "pricing_config",
@@ -717,7 +721,7 @@ export const pricingConfig = pgTable(
 
 - [ ] **Step 3: Client + drizzle.config**
 
-`backend/src/db/client.ts`:
+`backend/src/infra/db/client.ts`:
 
 ```ts
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -737,7 +741,7 @@ export type Db = ReturnType<typeof createDb>;
 import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
-  schema: "./src/db/schema.ts",
+  schema: "./src/infra/db/schema.ts",
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: { url: process.env.DATABASE_URL! },
@@ -768,14 +772,14 @@ Expected: cria um arquivo SQL em `drizzle/` e aplica (tabela `pricing_config` cr
 
 - [ ] **Step 5: Escrever o teste que falha (integração)**
 
-`backend/src/config/repository.test.ts`:
+`backend/src/modules/pricing-config/repository.test.ts`:
 
 ```ts
 import { describe, it, expect, beforeEach } from "vitest";
-import { createDb } from "../db/client.js";
-import { pricingConfig } from "../db/schema.js";
+import { createDb } from "../../infra/db/client.js";
+import { pricingConfig } from "../../infra/db/schema.js";
 import { PricingConfigRepository } from "./repository.js";
-import { defaultConfig } from "../pricing/config.js";
+import { defaultConfig } from "../../domain/pricing/config.js";
 
 const url = process.env.DATABASE_URL;
 
@@ -803,19 +807,19 @@ describe.skipIf(!url)("PricingConfigRepository", () => {
 
 - [ ] **Step 6: Rodar e verificar que falha**
 
-Run: `cd ~/Dev/estimate-engine/backend && export DATABASE_URL='postgres://postgres:postgres@localhost:5432/estimate_engine' && npx vitest run src/config/repository.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && export DATABASE_URL='postgres://postgres:postgres@localhost:5432/estimate_engine' && npx vitest run src/modules/pricing-config/repository.test.ts`
 Expected: FAIL (`Cannot find module './repository.js'`).
 
 - [ ] **Step 7: Implementar o repository**
 
-`backend/src/config/repository.ts`:
+`backend/src/modules/pricing-config/repository.ts`:
 
 ```ts
 import { eq } from "drizzle-orm";
-import type { Db } from "../db/client.js";
-import { pricingConfig } from "../db/schema.js";
-import { defaultConfig } from "../pricing/config.js";
-import type { PricingConfig } from "../pricing/types.js";
+import type { Db } from "../../infra/db/client.js";
+import { pricingConfig } from "../../infra/db/schema.js";
+import { defaultConfig } from "../../domain/pricing/config.js";
+import type { PricingConfig } from "../../domain/pricing/types.js";
 
 export interface ConfigStore {
   get(): Promise<PricingConfig>;
@@ -849,30 +853,35 @@ export class PricingConfigRepository implements ConfigStore {
 
 - [ ] **Step 8: Rodar e verificar que passa**
 
-Run: `cd ~/Dev/estimate-engine/backend && export DATABASE_URL='postgres://postgres:postgres@localhost:5432/estimate_engine' && npx vitest run src/config/repository.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && export DATABASE_URL='postgres://postgres:postgres@localhost:5432/estimate_engine' && npx vitest run src/modules/pricing-config/repository.test.ts`
 Expected: PASS.
 
 - [ ] **Step 9: Commit**
 
 ```bash
 cd ~/Dev/estimate-engine
-git add backend/src/db backend/src/config backend/drizzle.config.ts backend/drizzle backend/.env.example backend/package.json backend/package-lock.json
-git commit -m "feat(config): Drizzle schema, migration and PricingConfig repository"
+git add backend/src/infra/db backend/src/modules/pricing-config/repository.ts backend/src/modules/pricing-config/repository.test.ts backend/drizzle.config.ts backend/drizzle backend/.env.example backend/package.json backend/package-lock.json
+git commit -m "feat(pricing-config): Drizzle schema, client and repository"
 ```
 
 ---
 
-### Task 8: HTTP — Fastify server, Zod schemas, rotas e entry
+### Task 8: HTTP — módulos (rotas + zod), plugins de infra e wiring
 
 **Files:**
-- Create: `backend/src/http/schemas.ts`
-- Create: `backend/src/http/server.ts`
+- Create: `backend/src/modules/quotes/schema.ts`
+- Create: `backend/src/modules/quotes/routes.ts`
+- Create: `backend/src/modules/pricing-config/schema.ts`
+- Create: `backend/src/modules/pricing-config/routes.ts`
+- Create: `backend/src/infra/http/plugins/cors.ts`
+- Create: `backend/src/infra/http/plugins/error-handler.ts`
+- Create: `backend/src/infra/http/server.ts`
 - Create: `backend/src/index.ts`
-- Test: `backend/src/http/server.test.ts`
+- Test: `backend/src/infra/http/server.test.ts`
 
 **Interfaces:**
 - Consumes: `calculate`, `PricingError`, `ConfigStore`.
-- Produces: `buildServer(store: ConfigStore): FastifyInstance` com rotas `POST /api/quotes/calculate`, `GET /api/pricing-config`, `PUT /api/pricing-config`.
+- Produces: `buildServer(store: ConfigStore): FastifyInstance`. Rotas registradas pelos módulos: `POST /api/quotes/calculate`, `GET /api/pricing-config`, `PUT /api/pricing-config`. Erros de domínio (`PricingError`) viram 400 via `setErrorHandler`.
 
 - [ ] **Step 1: Instalar dependências**
 
@@ -883,14 +892,14 @@ npm install fastify @fastify/cors zod
 
 - [ ] **Step 2: Escrever o teste que falha**
 
-`backend/src/http/server.test.ts`:
+`backend/src/infra/http/server.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
 import { buildServer } from "./server.js";
-import { defaultConfig } from "../pricing/config.js";
-import type { ConfigStore } from "../config/repository.js";
-import type { PricingConfig } from "../pricing/types.js";
+import { defaultConfig } from "../../domain/pricing/config.js";
+import type { ConfigStore } from "../../modules/pricing-config/repository.js";
+import type { PricingConfig } from "../../domain/pricing/types.js";
 
 class FakeStore implements ConfigStore {
   config: PricingConfig = defaultConfig();
@@ -924,12 +933,12 @@ describe("POST /api/quotes/calculate", () => {
 
 - [ ] **Step 3: Rodar e verificar que falha**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/http/server.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/infra/http/server.test.ts`
 Expected: FAIL (`Cannot find module './server.js'`).
 
-- [ ] **Step 4: Zod schemas**
+- [ ] **Step 4: Schemas Zod dos módulos**
 
-`backend/src/http/schemas.ts`:
+`backend/src/modules/quotes/schema.ts`:
 
 ```ts
 import { z } from "zod";
@@ -947,8 +956,18 @@ export const quoteInputSchema = z.object({
   addOns: z.array(z.object({ addOnId: z.string(), quantity: z.number().int().min(1) })).default([]),
   manualDiscount: z.number().int().nonnegative().default(0),
 });
+```
 
-export const addOnSchema = z.object({
+`backend/src/modules/pricing-config/schema.ts`:
+
+```ts
+import { z } from "zod";
+
+// Enums espelham o domínio. Pequena duplicação proposital (cada módulo é dono do seu contrato).
+const serviceTypeSchema = z.enum(["deep_clean", "recurring", "move_in_out"]);
+const frequencySchema = z.enum(["one_time", "weekly", "bi_weekly", "monthly"]);
+
+const addOnSchema = z.object({
   id: z.string(),
   name: z.string(),
   price: z.number().int().nonnegative(),
@@ -967,38 +986,37 @@ export const pricingConfigSchema = z.object({
 });
 ```
 
-- [ ] **Step 5: Server**
+- [ ] **Step 5: Rotas dos módulos (Fastify)**
 
-`backend/src/http/server.ts`:
+`backend/src/modules/quotes/routes.ts`:
 
 ```ts
-import Fastify, { type FastifyInstance } from "fastify";
-import cors from "@fastify/cors";
-import { calculate } from "../pricing/calculate.js";
-import { PricingError } from "../pricing/errors.js";
-import type { ConfigStore } from "../config/repository.js";
-import { quoteInputSchema, pricingConfigSchema } from "./schemas.js";
+import type { FastifyInstance } from "fastify";
+import { calculate } from "../../domain/pricing/calculate.js";
+import { quoteInputSchema } from "./schema.js";
+import type { ConfigStore } from "../pricing-config/repository.js";
 
-export function buildServer(store: ConfigStore): FastifyInstance {
-  const app = Fastify({ logger: true });
-  app.register(cors, { origin: "http://localhost:5173" });
-
+export function quotesRoutes(app: FastifyInstance, store: ConfigStore) {
   app.post("/api/quotes/calculate", async (request, reply) => {
     const parsed = quoteInputSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: parsed.error.message });
     }
     const config = await store.get();
-    try {
-      return calculate(parsed.data, config);
-    } catch (err) {
-      if (err instanceof PricingError) {
-        return reply.status(400).send({ error: err.message });
-      }
-      throw err;
-    }
+    // Se calculate lançar PricingError, o error-handler global devolve 400.
+    return calculate(parsed.data, config);
   });
+}
+```
 
+`backend/src/modules/pricing-config/routes.ts`:
+
+```ts
+import type { FastifyInstance } from "fastify";
+import { pricingConfigSchema } from "./schema.js";
+import type { ConfigStore } from "./repository.js";
+
+export function pricingConfigRoutes(app: FastifyInstance, store: ConfigStore) {
   app.get("/api/pricing-config", async () => store.get());
 
   app.put("/api/pricing-config", async (request, reply) => {
@@ -1009,24 +1027,77 @@ export function buildServer(store: ConfigStore): FastifyInstance {
     await store.save(parsed.data);
     return parsed.data;
   });
+}
+```
+
+- [ ] **Step 6: Plugins de infra (cors + error-handler)**
+
+`backend/src/infra/http/plugins/cors.ts`:
+
+```ts
+import type { FastifyInstance } from "fastify";
+import cors from "@fastify/cors";
+
+export function registerCors(app: FastifyInstance) {
+  app.register(cors, { origin: "http://localhost:5173" });
+}
+```
+
+`backend/src/infra/http/plugins/error-handler.ts`:
+
+```ts
+import type { FastifyInstance } from "fastify";
+import { PricingError } from "../../../domain/pricing/errors.js";
+
+export function registerErrorHandler(app: FastifyInstance) {
+  app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof PricingError) {
+      return reply.status(400).send({ error: error.message });
+    }
+    app.log.error(error);
+    return reply.status(500).send({ error: "internal server error" });
+  });
+}
+```
+
+- [ ] **Step 7: Server (compõe plugins + módulos)**
+
+`backend/src/infra/http/server.ts`:
+
+```ts
+import Fastify, { type FastifyInstance } from "fastify";
+import { registerCors } from "./plugins/cors.js";
+import { registerErrorHandler } from "./plugins/error-handler.js";
+import { quotesRoutes } from "../../modules/quotes/routes.js";
+import { pricingConfigRoutes } from "../../modules/pricing-config/routes.js";
+import type { ConfigStore } from "../../modules/pricing-config/repository.js";
+
+export function buildServer(store: ConfigStore): FastifyInstance {
+  const app = Fastify({ logger: true });
+
+  registerCors(app);
+  registerErrorHandler(app);
+
+  quotesRoutes(app, store);
+  pricingConfigRoutes(app, store);
 
   return app;
 }
 ```
 
-- [ ] **Step 6: Rodar e verificar que passa**
+- [ ] **Step 8: Rodar e verificar que passa**
 
-Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/http/server.test.ts`
+Run: `cd ~/Dev/estimate-engine/backend && npx vitest run src/infra/http/server.test.ts`
 Expected: PASS.
 
-- [ ] **Step 7: Entry point (wiring)**
+- [ ] **Step 9: Entry point (wiring)**
 
 `backend/src/index.ts`:
 
 ```ts
-import { buildServer } from "./http/server.js";
-import { createDb } from "./db/client.js";
-import { PricingConfigRepository } from "./config/repository.js";
+import { buildServer } from "./infra/http/server.js";
+import { createDb } from "./infra/db/client.js";
+import { PricingConfigRepository } from "./modules/pricing-config/repository.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL não definida");
@@ -1041,7 +1112,7 @@ app.listen({ port }).then(() => {
 });
 ```
 
-- [ ] **Step 8: Smoke test manual**
+- [ ] **Step 10: Smoke test manual**
 
 Run:
 ```bash
@@ -1055,12 +1126,12 @@ kill %1
 ```
 Expected: JSON com `"total":19000`.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 cd ~/Dev/estimate-engine
-git add backend/src/http backend/src/index.ts backend/package.json backend/package-lock.json
-git commit -m "feat(api): Fastify server with calculate and pricing-config routes"
+git add backend/src/modules backend/src/infra/http backend/src/index.ts backend/package.json backend/package-lock.json
+git commit -m "feat(api): module routes, http plugins and server wiring"
 ```
 
 ---
@@ -1076,7 +1147,7 @@ git commit -m "feat(api): Fastify server with calculate and pricing-config route
 - Modify: `frontend/vite.config.ts`
 
 **Interfaces:**
-- Produces: `formatCents(cents: number): string`; `api` (axios, baseURL `/api`); tipos TS espelhando os do backend.
+- Produces: `formatCents(cents: number): string`; `api` (axios, baseURL `/api`); tipos TS espelhando os do backend (`src/domain/pricing/types.ts`).
 
 - [ ] **Step 1: Scaffold Vite + deps**
 
@@ -1156,7 +1227,7 @@ import axios from "axios";
 export const api = axios.create({ baseURL: "/api" });
 ```
 
-`frontend/src/types.ts` (espelham os tipos do backend `src/pricing/types.ts`):
+`frontend/src/types.ts` (espelham os tipos do backend `src/domain/pricing/types.ts`):
 
 ```ts
 export type ServiceType = "deep_clean" | "recurring" | "move_in_out";
@@ -1592,13 +1663,14 @@ git commit -m "feat(frontend): config screen with pricing fields and add-on cata
 
 ## Critérios de aceite da Fase 1 (checklist final)
 
-- [ ] `npm test` no backend passa inteiro (engine, repo, http).
+- [ ] `npm test` no backend passa inteiro (domain, repository, http).
 - [ ] Golden case Helena retorna `19000` na engine, no endpoint e na UI.
 - [ ] `GET`/`PUT /api/pricing-config` persistem config + catálogo de add-ons (JSONB) no Postgres via Drizzle.
 - [ ] Calculadora mostra breakdown ao vivo e seleção de add-ons.
 - [ ] Config edita rates/mínimo e faz CRUD de add-ons.
+- [ ] Estrutura segue `domain` / `modules` / `infra` (ver guia 09).
 - [ ] Nenhum decimal quebrado em valor monetário (apenas multiplicador/percentual, com `roundHalfUp`).
 
 ## Próxima fase
 
-Fase 2 (Estimates: persistir quote + cliente + página pública accept/decline) recebe seu próprio spec → plano quando a Fase 1 estiver verde.
+Fase 2 (Estimates: persistir quote + cliente + página pública accept/decline) entra como `src/modules/estimates/` — sem reestruturar o que já existe.

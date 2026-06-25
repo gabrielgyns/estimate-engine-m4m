@@ -103,8 +103,11 @@ dou o teste (RED)** e **você faz o GREEN**.
 São estes os artefatos que você vai criar neste módulo. O **tipo** pode ser mostrado por inteiro
 (é só uma definição de tipo). A **função** vem só com a assinatura — o corpo é seu.
 
+> Estes arquivos moram em `src/domain/` — o núcleo puro do backend, sem framework. Veja o guia
+> `09-organizacao-do-projeto.md` para entender a estrutura `domain/ · modules/ · infra/`.
+
 ```ts
-// backend/src/pricing/money.ts
+// backend/src/domain/pricing/money.ts
 
 // Money é um valor monetário em cents (inteiro). Nunca use decimais quebrados para dinheiro.
 export type Money = number;
@@ -130,7 +133,7 @@ seguir à risca).
 cd ~/Dev/estimate-engine
 git init
 printf "node_modules/\ndist/\n.env\n" > .gitignore
-mkdir -p backend/src/pricing
+mkdir -p backend/src/domain/pricing
 cd backend
 npm init -y
 npm pkg set type="module"
@@ -176,7 +179,7 @@ npm install -D typescript tsx vitest @types/node
 
 ### 4.4 O teste (cole e rode no vermelho)
 
-`backend/src/pricing/money.test.ts`:
+`backend/src/domain/pricing/money.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
@@ -197,7 +200,7 @@ Rode e **confirme que falha** (esse é o RED):
 
 ```bash
 cd ~/Dev/estimate-engine/backend
-npx vitest run src/pricing/money.test.ts
+npx vitest run src/domain/pricing/money.test.ts
 ```
 
 Esperado: **FAIL** com algo como `Cannot find module './money.js'` — porque `money.ts` ainda não
@@ -205,7 +208,7 @@ existe. Esse erro vermelho é o ponto de partida correto.
 
 ## 5. Seu desafio (GREEN)
 
-Crie `backend/src/pricing/money.ts` e faça o teste ficar **verde**. Você precisa:
+Crie `backend/src/domain/pricing/money.ts` e faça o teste ficar **verde**. Você precisa:
 
 1. Exportar o tipo `export type Money = number;` (essa parte é definição de tipo; pode escrever
    exatamente assim).
@@ -224,7 +227,7 @@ Rode de novo até ficar verde:
 
 ```bash
 cd ~/Dev/estimate-engine/backend
-npx vitest run src/pricing/money.test.ts
+npx vitest run src/domain/pricing/money.test.ts
 ```
 
 Esperado: **PASS**.
@@ -239,7 +242,7 @@ Esperado: **PASS**.
 - **Rode a suíte inteira** ao final para garantir que nada quebrou:
 
 ```bash
-npx vitest run src/pricing/
+npx vitest run src/domain/pricing/
 ```
 
 - Quando estiver verde, **commite** (o curso assume que você versiona cada passo):
@@ -247,7 +250,7 @@ npx vitest run src/pricing/
 ```bash
 cd ~/Dev/estimate-engine
 git add .gitignore backend/package.json backend/tsconfig.json backend/package-lock.json \
-  backend/src/pricing/money.ts backend/src/pricing/money.test.ts
+  backend/src/domain/pricing/money.ts backend/src/domain/pricing/money.test.ts
 git commit -m "feat(pricing): scaffold backend, Money type and roundHalfUp"
 ```
 
@@ -258,7 +261,7 @@ git commit -m "feat(pricing): scaffold backend, Money type and roundHalfUp"
 - [ ] Vitest instalado e rodando.
 - [ ] `money.test.ts` passou pelo ciclo: **rodou vermelho** antes de você implementar.
 - [ ] `roundHalfUp(150.5) === 151` e `roundHalfUp(34199.5) === 34200` passam.
-- [ ] `npx vitest run src/pricing/` está **verde**.
+- [ ] `npx vitest run src/domain/pricing/` está **verde**.
 
 ## 8. Para se aprofundar
 

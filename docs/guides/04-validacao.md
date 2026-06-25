@@ -81,7 +81,8 @@ vira 400 automaticamente, sem tocar no handler. Essa é a vantagem de modelar co
 
 ### 2.3 As definições das classes (models — pode copiar)
 
-Estas são **definições de tipos** (models), então estão aqui prontas. Crie `src/pricing/errors.ts`:
+Estas são **definições de tipos** (models), então estão aqui prontas. Crie `src/domain/pricing/errors.ts`
+(continua no domínio puro — ver guia `09-organizacao-do-projeto.md`):
 
 ```ts
 // Erro base do domínio de preços. O handler HTTP mapeia qualquer PricingError para 400.
@@ -110,7 +111,7 @@ export class InvalidQuantityError extends PricingError {
 ## 3. Testes (RED)
 
 Você vai testar que `calculate` **lança** a classe certa para cada input ruim. Primeiro, adicione os
-imports dos erros no topo de `src/pricing/calculate.test.ts`:
+imports dos erros no topo de `src/domain/pricing/calculate.test.ts`:
 
 ```ts
 import {
@@ -145,7 +146,7 @@ Rode e confirme que falha (o módulo de erros ainda não existe):
 
 ```bash
 cd ~/Dev/estimate-engine/backend
-npx vitest run src/pricing/calculate.test.ts
+npx vitest run src/domain/pricing/calculate.test.ts
 ```
 
 Esperado: **FAIL** (`Cannot find module './errors.js'`).
@@ -211,7 +212,7 @@ e addOnId vai resolver.
 Quando terminar, rode a suíte inteira e confirme tudo verde:
 
 ```bash
-npx vitest run src/pricing/
+npx vitest run src/domain/pricing/
 ```
 
 Esperado: **PASS** (todos — os de cálculo do guia 03 *e* os cinco de validação).
@@ -229,13 +230,13 @@ Esperado: **PASS** (todos — os de cálculo do guia 03 *e* os cinco de validaç
 
 ## 6. Checklist de conclusão
 
-- [ ] `src/pricing/errors.ts` define `PricingError` + as 5 subclasses.
+- [ ] `src/domain/pricing/errors.ts` define `PricingError` + as 5 subclasses.
 - [ ] Todas as subclasses estendem `PricingError` (logo, `instanceof PricingError` é `true` para
       todas).
 - [ ] `calculate` valida **no início**, antes de qualquer cálculo.
 - [ ] A ordem é: negativos → service → frequency → add-on inexistente → quantidade < 1.
 - [ ] Os 5 testes de `calculate — validação de domínio` passam com `.toThrow(ErrClass)`.
-- [ ] `npx vitest run src/pricing/` passa inteiro (cálculo + validação).
+- [ ] `npx vitest run src/domain/pricing/` passa inteiro (cálculo + validação).
 
 ## 7. Para se aprofundar
 

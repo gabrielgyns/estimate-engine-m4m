@@ -14,10 +14,11 @@ Pré-requisito: ter terminado os guias **01–04** (engine `calculate` completa,
 Persistir a `PricingConfig` no Postgres e expor o acesso a dados atrás de uma interface mínima.
 Ao final deste módulo você vai ter:
 
-- A tabela `pricing_config` definida com **Drizzle ORM** (schema declarativo tipado).
+- A tabela `pricing_config` definida com **Drizzle ORM** (schema declarativo tipado), em `infra/db/`.
 - A coluna `data` como **JSONB** guardando a config inteira, com tipagem estática via `$type<PricingConfig>()`.
 - A migration gerada e aplicada com **drizzle-kit**.
-- A interface `ConfigStore` (o contrato) e a classe `PricingConfigRepository` que a implementa.
+- A interface `ConfigStore` (o contrato) e a classe `PricingConfigRepository` que a implementa, no
+  módulo `modules/pricing-config/`.
 - O comportamento **seed on first read**: se a tabela está vazia, `get` semeia a `defaultConfig`.
 - Testes de integração que rodam contra um Postgres real (e se *pulam* sozinhos quando não há banco).
 
@@ -43,7 +44,33 @@ Por que vale a pena:
 Em camadas, o fluxo é: `http → repository → engine`. O repository fica **entre** o HTTP e o banco;
 a engine fica num canto isolado, sem dependências de infraestrutura.
 
-### 2.2 Drizzle ORM — query builder tipado + connection pool
+### 2.2 Onde cada peça mora — `modules/pricing-config/` vs `infra/db/`
+
+A estrutura do projeto é organizada **por papel** (ver guia 09): `domain/` (regras puras),
+`modules/<feature>/` (features = fatias verticais) e `infra/` (encanamento técnico). Esse guia
+toca dois desses baldes, e a separação não é arbitrária:
+
+- **`modules/pricing-config/repository.ts`** — o repository é a feature **dona daquele dado**.
+  Quem sabe que existe uma "pricing config", como ela é lida (seed on first read) e como ela é
+  gravada (upsert) é a feature `pricing-config`. A interface `ConfigStore` e a classe
+  `PricingConfigRepository` moram aqui porque mudam junto com a feature.
+- **`infra/db/schema.ts` e `infra/db/client.ts`** — o **schema das tabelas** e o **client do banco**
+  (pool + Drizzle) são **encanamento compartilhável**. Não pertencem a nenhuma feature em
+  particular: amanhã `modules/estimates/` e `modules/leads/` vão usar o mesmo `client.ts` e
+  declarar tabelas no mesmo `infra/db/schema.ts`. Por isso vivem em `infra/`, não dentro de um módulo.
+
+Isso casa com a **regra de dependência** do guia 09 — a seta aponta sempre pra dentro:
+
+```
+modules  →  infra/db      (o repository importa createDb e o schema)
+modules  →  domain        (o repository importa defaultConfig e PricingConfig)
+```
+
+O `repository.ts` (em `modules/`) importa de `infra/db/` e de `domain/pricing/` — nunca o contrário.
+`infra/db/` não sabe que `pricing-config` existe; ele só oferece o cano. O `domain/pricing/`, mais
+ao centro ainda, não importa nem `infra` nem `modules`: a engine continua pura.
+
+### 2.3 Drizzle ORM — query builder tipado + connection pool
 
 **Drizzle** é um *query builder tipado* para TypeScript. Você descreve o schema em código
 (`pgTable(...)`), e o Drizzle te dá:
@@ -82,7 +109,7 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/estimate_engine
 PORT=8080
 ```
 
-### 2.3 Por que guardar a config inteira como JSONB
+### 2.4 Por que guardar a config inteira como JSONB
 
 A `PricingConfig` tem campos escalares (`basePrice`, `perSqft`, `minimumPrice`), mas também tem
 estruturas aninhadas e variáveis: `serviceMultipliers`, `frequencyDiscounts` e — o ponto-chave — um
@@ -102,7 +129,7 @@ Como a config é lida inteira e gravada inteira (nunca filtramos "todas as confi
 o JSONB encaixa perfeitamente. O *trade-off* que aceitamos: a integridade dos campos internos passa
 a ser responsabilidade da **validação na aplicação** (Zod na fronteira HTTP — guia 06), não do banco.
 
-### 2.4 Tabela singleton
+### 2.5 Tabela singleton
 
 Na Fase 1 existe **uma única** config (o spec diz "linha única; vira *per-tenant* se houver
 multi-tenant no futuro"). Garantimos isso com:
@@ -112,7 +139,7 @@ multi-tenant no futuro"). Garantimos isso com:
 
 Assim a tabela tem no máximo uma linha, e sabemos sempre onde ela está: `where(id = 1)`.
 
-### 2.5 `$type<PricingConfig>()` — tipando o JSONB
+### 2.6 `$type<PricingConfig>()` — tipando o JSONB
 
 Para o Drizzle, uma coluna `jsonb` é, por padrão, `unknown` — ele não tem como adivinhar a forma do
 JSON. O `.$type<PricingConfig>()` é uma anotação **só de tipo** (não muda nada no banco) que diz ao
@@ -120,16 +147,20 @@ TypeScript: "o conteúdo desta coluna é uma `PricingConfig`". Com isso, ao ler 
 `row.data` já vem tipado como `PricingConfig`, e ao gravar, o compilador exige que você passe um
 objeto com a forma certa. É o elo que liga o **tipo do domínio** ao **armazenamento**.
 
+Repare que o schema (`infra/db/schema.ts`) importa `PricingConfig` de
+`../../domain/pricing/types.js`: o encanamento conhece o tipo do domínio (a seta aponta pra dentro),
+mas o domínio nunca conhece o encanamento.
+
 ## 3. Models (o que você vai escrever)
 
 ### 3.1 O schema Drizzle (mostrado na íntegra — é declarativo)
 
-`backend/src/db/schema.ts`:
+`backend/src/infra/db/schema.ts`:
 
 ```ts
 import { pgTable, smallint, jsonb, timestamp, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { PricingConfig } from "../pricing/types.js";
+import type { PricingConfig } from "../../domain/pricing/types.js";
 
 export const pricingConfig = pgTable(
   "pricing_config",
@@ -149,25 +180,27 @@ Leia campo a campo:
 - `updatedAt` — timestamp com timezone, `defaultNow()`. Útil para auditoria/debug.
 - A terceira posição do `pgTable` é onde declaramos **constraints de tabela**: a check `id = 1`.
 
+Note o import: `PricingConfig` vem de `../../domain/pricing/types.js`. O schema está em
+`infra/db/`, dois níveis abaixo de `src/`, alcançando `domain/pricing/`.
+
 ### 3.2 A assinatura de `createDb` (mostrada — é o seam de infraestrutura)
 
-`backend/src/db/client.ts`:
+`backend/src/infra/db/client.ts`:
 
 ```ts
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 export function createDb(connectionString: string) {
-  const pool = new Pool({ connectionString });
-  return drizzle(pool);
+  // cria o pool pg e embrulha no Drizzle (você implementa)
 }
 
 export type Db = ReturnType<typeof createDb>;
 ```
 
-`createDb` cria o pool `pg` e embrulha no Drizzle. O tipo `Db` é o que o repository vai receber no
-construtor. (Este é o único arquivo de produção que mostro inteiro aqui — não há lógica de negócio
-nele, é puro *wiring* de driver.)
+`createDb` cria o pool `pg` e embrulha no Drizzle; o tipo `Db` é o que o repository vai receber no
+construtor. É puro *wiring* de driver, sem lógica de negócio — por isso mora em `infra/db/`. O corpo
+é curto (criar o `Pool` com a `connectionString` e passar pro `drizzle`); fica como exercício.
 
 ### 3.3 O `drizzle.config.ts` (config da CLI de migrations — mostrado)
 
@@ -177,15 +210,16 @@ nele, é puro *wiring* de driver.)
 import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
-  schema: "./src/db/schema.ts",
+  schema: "./src/infra/db/schema.ts",
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: { url: process.env.DATABASE_URL! },
 });
 ```
 
-Isso diz ao drizzle-kit: leia o schema em `./src/db/schema.ts`, escreva as migrations em `./drizzle/`,
-o dialeto é PostgreSQL, e conecte usando `DATABASE_URL`.
+Isso diz ao drizzle-kit: leia o schema em `./src/infra/db/schema.ts`, escreva as migrations em
+`./drizzle/`, o dialeto é PostgreSQL, e conecte usando `DATABASE_URL`. O caminho do `schema` agora
+aponta para `infra/db/` — é o único lugar onde o drizzle-kit procura as tabelas.
 
 Adicione os scripts ao `backend/package.json`:
 
@@ -209,18 +243,19 @@ export interface ConfigStore {
 
 Essa interface é o **contrato** que o HTTP vai consumir. Repare que ela não menciona Drizzle nem
 Postgres — só fala em `PricingConfig`. É exatamente isso que permite, no guia 06, trocar a
-implementação real por um `FakeStore` nos testes.
+implementação real por um `FakeStore` nos testes. Ela mora junto com o repository, em
+`modules/pricing-config/repository.ts`, porque é o contrato daquela feature.
 
 ### 3.5 As assinaturas do `PricingConfigRepository` (SEM corpo — é o seu desafio)
 
-`backend/src/config/repository.ts`:
+`backend/src/modules/pricing-config/repository.ts`:
 
 ```ts
 import { eq } from "drizzle-orm";
-import type { Db } from "../db/client.js";
-import { pricingConfig } from "../db/schema.js";
-import { defaultConfig } from "../pricing/config.js";
-import type { PricingConfig } from "../pricing/types.js";
+import type { Db } from "../../infra/db/client.js";
+import { pricingConfig } from "../../infra/db/schema.js";
+import { defaultConfig } from "../../domain/pricing/config.js";
+import type { PricingConfig } from "../../domain/pricing/types.js";
 
 export interface ConfigStore {
   get(): Promise<PricingConfig>;
@@ -239,6 +274,10 @@ export class PricingConfigRepository implements ConfigStore {
   }
 }
 ```
+
+Olhe os imports — eles materializam a regra de dependência da seção 2.2: o repository (em `modules/`)
+puxa o `Db` e o `pricingConfig` de `infra/db/`, e o `defaultConfig` + `PricingConfig` de
+`domain/pricing/`. Tudo aponta pra dentro.
 
 O construtor recebe o `Db` por **injeção de dependência** — quem cria o repo decide qual conexão
 passar. Os corpos de `get` e `save` são o seu trabalho.
@@ -268,9 +307,16 @@ Você pode conferir com `docker exec -it ee-pg psql -U postgres -d estimate_engi
 > histórico auditável e reproduzível do schema. Qualquer ambiente (sua máquina, CI, produção)
 > chega ao mesmo estado rodando as mesmas migrations na ordem.
 
-## 5. Seu desafio (GREEN): implementar `get` e `save`
+## 5. Seu desafio (GREEN): implementar `createDb`, `get` e `save`
 
-Você vai escrever os corpos de `get` e `save`. Aqui estão os conceitos e dicas — não o código.
+Você vai escrever o corpo de `createDb` e os corpos de `get` e `save`. Aqui estão os conceitos e
+dicas — não o código.
+
+### 5.0 `createDb(connectionString)` — o cano do banco
+
+Crie um `Pool` do `pg` com a `connectionString` recebida e passe esse pool para `drizzle(...)`,
+retornando o resultado. É um wrapper de duas linhas; o tipo `Db` deriva sozinho do retorno via
+`ReturnType<typeof createDb>`.
 
 ### 5.1 `get()` — ler com seed on first read
 
@@ -313,14 +359,14 @@ O resultado: chamar `save` repetidamente sempre converge para "a linha 1 contém
 
 ## 6. Testes (RED) — integração contra Postgres real
 
-`backend/src/config/repository.test.ts`:
+`backend/src/modules/pricing-config/repository.test.ts`:
 
 ```ts
 import { describe, it, expect, beforeEach } from "vitest";
-import { createDb } from "../db/client.js";
-import { pricingConfig } from "../db/schema.js";
+import { createDb } from "../../infra/db/client.js";
+import { pricingConfig } from "../../infra/db/schema.js";
 import { PricingConfigRepository } from "./repository.js";
-import { defaultConfig } from "../pricing/config.js";
+import { defaultConfig } from "../../domain/pricing/config.js";
 
 const url = process.env.DATABASE_URL;
 
@@ -346,13 +392,15 @@ describe.skipIf(!url)("PricingConfigRepository", () => {
 });
 ```
 
-Dois detalhes importantes deste teste:
+O teste mora ao lado do repository, em `modules/pricing-config/`, e seus imports atravessam os
+baldes: `createDb` e `pricingConfig` de `infra/db/`, `defaultConfig` de `domain/pricing/`, e o
+próprio repository do mesmo módulo. Dois detalhes importantes deste teste:
 
 - **`describe.skipIf(!url)`** — estes são testes de **integração**: precisam de um Postgres de
   verdade. Sem `DATABASE_URL` no ambiente, eles **se pulam** em vez de falhar. Isso mantém a suíte
   rápida e verde em qualquer máquina/CI que não tenha banco, enquanto ainda dá cobertura real quando
-  o banco está presente. Os testes da engine (guias 01–04) são puros e rodam sempre; estes só quando
-  há `DATABASE_URL`.
+  o banco está presente. Os testes da engine (guias 01–04, em `domain/pricing/`) são puros e rodam
+  sempre; estes só quando há `DATABASE_URL`.
 - **`beforeEach` limpando a tabela** (`db.delete(pricingConfig)`) — testes precisam ser
   **independentes e determinísticos**. Se o teste anterior gravou `basePrice: 9999`, o próximo
   ("semeia defaultConfig quando a tabela está vazia") só faz sentido se a tabela começar **vazia**.
@@ -365,7 +413,7 @@ Primeiro veja o RED (sem o repo implementado):
 ```bash
 cd ~/Dev/estimate-engine/backend
 export DATABASE_URL='postgres://postgres:postgres@localhost:5432/estimate_engine'
-npx vitest run src/config/repository.test.ts
+npx vitest run src/modules/pricing-config/repository.test.ts
 ```
 
 Esperado **antes** de implementar: FAIL (`Cannot find module './repository.js'`).
@@ -374,16 +422,20 @@ Esperado **depois** de implementar `get`/`save`: PASS.
 Se rodar **sem** `DATABASE_URL`, os dois testes aparecem como *skipped* — e isso é correto:
 
 ```bash
-npx vitest run src/config/repository.test.ts   # sem DATABASE_URL → skipped
+npx vitest run src/modules/pricing-config/repository.test.ts   # sem DATABASE_URL → skipped
 ```
 
 ## 7. Refactor & boas práticas
 
-- **Mantenha a engine sem import de banco.** Se você precisar importar algo de `src/db` dentro de
-  `src/pricing`, parou: a config deve *chegar* na engine, não ser buscada por ela.
+- **Mantenha a engine sem import de banco.** Se você precisar importar algo de `infra/db` dentro de
+  `domain/pricing`, parou: a config deve *chegar* na engine, não ser buscada por ela. A seta de
+  dependência nunca sai do domínio.
 - **Não vaze tipos do Drizzle pra fora do repository.** O mundo externo só conhece `ConfigStore`,
   `PricingConfig` e `get`/`save`. Linhas de banco e helpers do Drizzle ficam dentro de
-  `repository.ts`.
+  `modules/pricing-config/repository.ts`.
+- **`infra/db/` é encanamento, não feature.** O `client.ts` e o `schema.ts` não sabem que
+  `pricing-config` existe — eles oferecem o cano que qualquer módulo futuro (`estimates`, `leads`)
+  vai reusar. Se você se pegar importando algo de `modules/` dentro de `infra/db/`, inverteu a seta.
 - **`save` idempotente.** Graças ao upsert, chamar `save` duas vezes com a mesma config não cria
   linhas duplicadas nem quebra. Boa propriedade.
 - **Use `eq` em vez de string crua.** Filtros tipados (`eq(pricingConfig.id, 1)`) são checados pelo
@@ -392,17 +444,21 @@ npx vitest run src/config/repository.test.ts   # sem DATABASE_URL → skipped
 ## 8. Checklist de conclusão
 
 - [ ] `npx drizzle-kit generate` criou um arquivo SQL em `drizzle/` e `migrate` criou a tabela.
-- [ ] `schema.ts`, `client.ts`, `drizzle.config.ts` e `repository.ts` existem.
+- [ ] `infra/db/schema.ts`, `infra/db/client.ts`, `drizzle.config.ts` e
+      `modules/pricing-config/repository.ts` existem.
 - [ ] `ConfigStore` está definida e `PricingConfigRepository` a implementa.
 - [ ] `get` faz seed on first read; `save` faz UPSERT.
-- [ ] Com `DATABASE_URL` setada, `npx vitest run src/config/repository.test.ts` passa (2 testes).
+- [ ] Com `DATABASE_URL` setada, `npx vitest run src/modules/pricing-config/repository.test.ts`
+      passa (2 testes).
 - [ ] Sem `DATABASE_URL`, esses testes aparecem como *skipped* (não falham).
-- [ ] A engine (`src/pricing`) continua sem nenhum import de `src/db`.
+- [ ] A engine (`domain/pricing/`) continua sem nenhum import de `infra/db/`.
+- [ ] `infra/db/` não importa nada de `modules/` (a dependência aponta só pra dentro).
 
 ## 9. Para se aprofundar
 
 - **Repository pattern** e a fronteira domínio/infraestrutura — por que a lógica pura não deve
-  conhecer persistência.
+  conhecer persistência, e por que o repository mora na *feature* enquanto o client/schema moram na
+  *infra* (ver guia 09).
 - **JSONB no Postgres** — quando documento vs. colunas; índices GIN (relevante só se você precisar
   filtrar *dentro* do JSON, o que não é o caso aqui).
 - **Connection pooling** com `pg` — tamanho do pool, conexões ociosas, por que reusar conexões.
@@ -414,3 +470,5 @@ npx vitest run src/config/repository.test.ts   # sem DATABASE_URL → skipped
 ---
 
 Próximo: **`06-http-api.md`** — expor tudo isso via Fastify, com validação Zod na fronteira.
+</content>
+</invoke>

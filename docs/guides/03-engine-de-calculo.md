@@ -8,7 +8,7 @@
 >
 > **Pré-requisitos:** guias `01-money-e-tdd.md` (tipo `Money`, `roundHalfUp`) e
 > `02-modelo-de-dominio.md` (os tipos `QuoteInput`, `PricingConfig`, `QuoteBreakdown`, etc. +
-> `defaultConfig()`). Se você ainda não tem esses tipos no diretório `src/pricing`, volte e termine
+> `defaultConfig()`). Se você ainda não tem esses tipos no diretório `src/domain/pricing`, volte e termine
 > o guia 02 antes.
 
 ---
@@ -124,7 +124,7 @@ que o `QuoteBreakdown` promete em cada campo.
 
 Você já tem os tipos do guia 02 (`QuoteInput`, `PricingConfig`, `QuoteBreakdown`, `AddOnLine`, etc.)
 e o `roundHalfUp` do guia 01. A única coisa nova aqui é a assinatura da função, no arquivo
-`src/pricing/calculate.ts`:
+`src/domain/pricing/calculate.ts` (o domínio puro — ver guia `09-organizacao-do-projeto.md`):
 
 ```ts
 import { roundHalfUp } from "./money.js";
@@ -141,7 +141,7 @@ O corpo é **seu desafio**. Vamos construí-lo em três etapas, cada uma guiada 
 
 ## 4. Construção incremental por TDD (3 etapas)
 
-Crie o arquivo de teste `src/pricing/calculate.test.ts`. Em todas as etapas, este header fica no
+Crie o arquivo de teste `src/domain/pricing/calculate.test.ts`. Em todas as etapas, este header fica no
 topo (o `baseInput` é o golden case da Helena, reutilizado em quase todo teste):
 
 ```ts
@@ -181,12 +181,12 @@ Rode e confirme que falha (o módulo ainda não existe):
 
 ```bash
 cd ~/Dev/estimate-engine/backend
-npx vitest run src/pricing/calculate.test.ts
+npx vitest run src/domain/pricing/calculate.test.ts
 ```
 
 Esperado: **FAIL** (`Cannot find module './calculate.js'`).
 
-**O que implementar (GREEN), em prosa.** Crie `src/pricing/calculate.ts` com a função `calculate`.
+**O que implementar (GREEN), em prosa.** Crie `src/domain/pricing/calculate.ts` com a função `calculate`.
 Nesta etapa ela só precisa preencher os **campos de subtotal** do breakdown; os demais campos do
 `QuoteBreakdown` ainda podem ir como `0` / `[]` (placeholders que as próximas etapas substituem).
 
@@ -209,7 +209,7 @@ Dicas:
 Rode de novo; deve passar:
 
 ```bash
-npx vitest run src/pricing/calculate.test.ts
+npx vitest run src/domain/pricing/calculate.test.ts
 ```
 
 Esperado: **PASS**.
@@ -250,7 +250,7 @@ describe("calculate — multiplicador e desconto", () => {
 Rode e confirme que falha (`total`/`afterMultiplier` ainda valem `0`):
 
 ```bash
-npx vitest run src/pricing/calculate.test.ts
+npx vitest run src/domain/pricing/calculate.test.ts
 ```
 
 Esperado: **FAIL**.
@@ -305,7 +305,7 @@ nesta etapa). Dicas:
 Rode; todos devem passar:
 
 ```bash
-npx vitest run src/pricing/calculate.test.ts
+npx vitest run src/domain/pricing/calculate.test.ts
 ```
 
 Esperado: **PASS** (todos).
@@ -343,7 +343,7 @@ describe("calculate — add-ons, desconto manual e piso", () => {
 Rode e confirme que falha:
 
 ```bash
-npx vitest run src/pricing/calculate.test.ts
+npx vitest run src/domain/pricing/calculate.test.ts
 ```
 
 Esperado: **FAIL**.
@@ -373,7 +373,7 @@ Esperado: **FAIL**.
 Rode a suíte inteira do diretório e confirme tudo verde:
 
 ```bash
-npx vitest run src/pricing/
+npx vitest run src/domain/pricing/
 ```
 
 Esperado: **PASS** (todos).
@@ -403,18 +403,18 @@ Com tudo verde, melhore sem quebrar os testes:
   engine.
 - **Não otimize cedo.** O `Map` para o catálogo já é a única estrutura que vale a pena. O resto é
   aritmética direta.
-- **Re-rode a suíte a cada mudança** (`npx vitest run src/pricing/`). O golden case é o alarme.
+- **Re-rode a suíte a cada mudança** (`npx vitest run src/domain/pricing/`). O golden case é o alarme.
 
 ## 7. Checklist de conclusão
 
-- [ ] `src/pricing/calculate.ts` exporta `calculate(input, config): QuoteBreakdown`.
+- [ ] `src/domain/pricing/calculate.ts` exporta `calculate(input, config): QuoteBreakdown`.
 - [ ] A função é **pura** (sem HTTP, DB, env, log ou `async`).
 - [ ] Etapa A: testes de subtotal verdes.
 - [ ] Etapa B: golden case = `19000`, `move_in_out` = `34200`, weekly desconta `3800`, pets entram no
       subtotal e são multiplicados — todos verdes.
 - [ ] Etapa C: add-ons somam flat com quantidade; piso mínimo segura o total — verdes.
 - [ ] `roundHalfUp` é aplicado **após cada** multiplicação por float (multiplicador e desconto).
-- [ ] `npx vitest run src/pricing/` passa inteiro.
+- [ ] `npx vitest run src/domain/pricing/` passa inteiro.
 
 ## 8. Para se aprofundar
 

@@ -101,7 +101,10 @@ números** do domínio, então os valores precisam estar exatos.
 Estes tipos são **definições** — copie-os como estão. (A implementação que você vai escrever é só
 o corpo de `defaultConfig`, na seção 5.)
 
-`backend/src/pricing/types.ts`:
+> Como todo o domínio, estes arquivos moram em `src/domain/pricing/` — o núcleo puro do backend.
+> Veja o guia `09-organizacao-do-projeto.md` para a estrutura `domain/ · modules/ · infra/`.
+
+`backend/src/domain/pricing/types.ts`:
 
 ```ts
 import type { Money } from "./money.js";
@@ -203,7 +206,7 @@ cents).
 mais os totais intermediários (`subtotal`, `afterMultiplier`, `frequencyDiscountAmount`,
 `addOnsTotal`) e o `total` final.
 
-`backend/src/pricing/config.ts` (a função que **você** implementa — aqui só a assinatura):
+`backend/src/domain/pricing/config.ts` (a função que **você** implementa — aqui só a assinatura):
 
 ```ts
 import type { PricingConfig } from "./types.js";
@@ -215,7 +218,7 @@ export function defaultConfig(): PricingConfig;
 
 ## 4. Testes (RED)
 
-`backend/src/pricing/config.test.ts`:
+`backend/src/domain/pricing/config.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
@@ -237,15 +240,15 @@ Rode e **confirme que falha** (RED):
 
 ```bash
 cd ~/Dev/estimate-engine/backend
-npx vitest run src/pricing/config.test.ts
+npx vitest run src/domain/pricing/config.test.ts
 ```
 
 Esperado: **FAIL** (`Cannot find module './config.js'`).
 
 ## 5. Seu desafio (GREEN)
 
-1. Crie `backend/src/pricing/types.ts` com os tipos da seção 3 (são definições — pode copiar).
-2. Crie `backend/src/pricing/config.ts` e implemente o **corpo** de `defaultConfig()`: ela deve
+1. Crie `backend/src/domain/pricing/types.ts` com os tipos da seção 3 (são definições — pode copiar).
+2. Crie `backend/src/domain/pricing/config.ts` e implemente o **corpo** de `defaultConfig()`: ela deve
    retornar uma `PricingConfig` montada com os valores abaixo.
 
 **Tabela de valores esperados (a fonte da verdade dos números):**
@@ -286,7 +289,7 @@ Rode até ficar verde:
 
 ```bash
 cd ~/Dev/estimate-engine/backend
-npx vitest run src/pricing/config.test.ts
+npx vitest run src/domain/pricing/config.test.ts
 ```
 
 Esperado: **PASS**.
@@ -300,14 +303,14 @@ Esperado: **PASS**.
 - **Confirme a suíte inteira** antes de commitar:
 
 ```bash
-npx vitest run src/pricing/
+npx vitest run src/domain/pricing/
 ```
 
 - Commit sugerido:
 
 ```bash
 cd ~/Dev/estimate-engine
-git add backend/src/pricing/types.ts backend/src/pricing/config.ts backend/src/pricing/config.test.ts
+git add backend/src/domain/pricing/types.ts backend/src/domain/pricing/config.ts backend/src/domain/pricing/config.test.ts
 git commit -m "feat(pricing): add domain types and defaultConfig"
 ```
 
@@ -319,7 +322,7 @@ git commit -m "feat(pricing): add domain types and defaultConfig"
 - [ ] Os números batem com a tabela (base `8000`, perSqft `6`, `move_in_out` `1.8`, `weekly` `0.2`).
 - [ ] O catálogo inicial tem os três add-ons (`inside_fridge`, `inside_oven`, `interior_windows`).
 - [ ] `serviceMultipliers` e `frequencyDiscounts` têm **todas** as chaves dos respectivos unions.
-- [ ] `npx vitest run src/pricing/` continua **verde** (incluindo o módulo 1).
+- [ ] `npx vitest run src/domain/pricing/` continua **verde** (incluindo o módulo 1).
 
 ## 8. Para se aprofundar
 

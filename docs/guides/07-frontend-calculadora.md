@@ -16,7 +16,7 @@ Ao terminar este módulo você vai ter:
   backend Node (Fastify) em `:8080`.
 - O **Vitest** configurado e um teste verde do util de dinheiro (`formatCents`).
 - Os **tipos TS** do domínio espelhando os tipos do backend (Node/TypeScript) em
-  `src/pricing/types.ts`.
+  `src/domain/pricing/types.ts`.
 - O cliente **axios** e o **TanStack Query** (`QueryClientProvider` + `useQuery`).
 - Um hook **`useDebounce`** para não disparar uma request por tecla.
 - A tela **`CalculatorPage`** com **breakdown ao vivo**: você digita à esquerda, o painel à direita
@@ -131,7 +131,7 @@ E adicione o script de teste em `frontend/package.json`, dentro de `"scripts"`:
 
 ## 4. Models (tipos que você vai usar — mostre na íntegra)
 
-Estes tipos **espelham os tipos do backend (Node/TypeScript) em `src/pricing/types.ts`** (guia 02).
+Estes tipos **espelham os tipos do backend (Node/TypeScript) em `src/domain/pricing/types.ts`** (guia 02).
 Como o backend também é TypeScript, eles são **literalmente os mesmos tipos** — os nomes de campo já
 são `camelCase` e a API serializa em JSON exatamente assim, sem nenhuma camada de tradução. (Numa
 fase futura dá pra extrair esses tipos para um pacote compartilhado entre back e front; na Fase 1
