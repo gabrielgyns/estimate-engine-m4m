@@ -51,16 +51,14 @@ import type { QuoteInput } from "../pricing/types";
 
 export type LeadStage = "new_lead" | "contacted" | "estimate_sent" | "won" | "lost";
 
-export interface LeadContact {
+// Contato em campos PLANOS: o lead é dado vivo/consultável (busca por email, filtro por nome) ⇒
+// colunas no banco, não jsonb. jsonb fica para snapshot (o customer/breakdown da estimate).
+export interface Lead {
+  id: string; // uuid
   name: string;
   email: string;
   phone: string;
   address: string;
-}
-
-export interface Lead {
-  id: string; // uuid
-  contact: LeadContact;
   source: string | null; // ex.: "website", "referral" — texto livre, opcional
   notes: string | null;
   stage: LeadStage;
@@ -71,11 +69,16 @@ export interface Lead {
 // Card do Kanban (a lista do board não precisa de notes/source).
 export interface LeadSummary {
   id: string;
-  name: string; // contact.name
+  name: string;
   stage: LeadStage;
   createdAt: string;
 }
 ```
+
+> **Tipos: entidade à mão, DTO inferido.** A entidade `Lead` é escrita à mão no domínio (puro, sem
+> Zod). O **input** da API nasce do Zod em `modules/leads/schema.ts` e o tipo do DTO sai por
+> `z.infer` — uma fonte da verdade para o contrato de entrada. Não se infere a entidade do Zod
+> (acoplaria o domínio; e o input não tem `id`/`stage`/timestamps — é outra forma).
 
 ### 4.1 Estágios e o seam de eventos (domínio puro)
 
@@ -115,7 +118,10 @@ O `error-handler` central (Fase 2) é estendido para mapear `LeadNotFoundError` 
 | Coluna | Tipo (Postgres) | Notas |
 |--------|-----------------|-------|
 | `id` | `uuid` PK (`gen_random_uuid()`) | |
-| `contact` | `jsonb` (`$type<LeadContact>()`) | contato |
+| `name` | `text` not null | contato (coluna plana, consultável) |
+| `email` | `text` not null | (pode ganhar índice único) |
+| `phone` | `text` not null | |
+| `address` | `text` not null | |
 | `source` | `text` null | opcional |
 | `notes` | `text` null | opcional |
 | `stage` | `pgEnum` (`new_lead`/`contacted`/`estimate_sent`/`won`/`lost`) default `new_lead` | |
@@ -149,8 +155,8 @@ Uma migration `ALTER TABLE`.
 ### 7.2 Mudança na criação de estimate
 
 `POST /api/estimates` passa a receber `{ leadId, input }` (sem `customer`). O service busca o lead,
-copia `lead.contact` para o `customer` snapshot da estimate e roda `calculate`. Se o `leadId` não
-existe → `LeadNotFoundError` (404).
+monta o `customer` snapshot a partir dos campos do lead (`{ name, email, phone, address }`) e roda
+`calculate`. Se o `leadId` não existe → `LeadNotFoundError` (404).
 
 ### 7.3 Seam de eventos (auto-avanço)
 

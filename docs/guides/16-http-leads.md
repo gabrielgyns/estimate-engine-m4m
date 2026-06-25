@@ -15,6 +15,14 @@
 
 ## 2. Conceitos
 
+> **Onde os tipos nascem: Zod no boundary, entidade à mão no domínio.** A entidade `Lead` é um tipo
+> **escrito à mão** em `domain/lead/types.ts` — puro, sem importar Zod (o domínio não conhece
+> framework). Já o **input** da API nasce do **Zod** aqui no módulo, e o tipo do DTO é **inferido**
+> com `z.infer` — *uma fonte da verdade* para o contrato de entrada. Por que não inferir o `Lead` do
+> Zod? (1) acoplaria o domínio ao Zod; (2) o input **não é** a entidade — ele não tem `id`, `stage`,
+> `createdAt` (o servidor define isso). São formas diferentes. Regra: **entidade à mão (domínio
+> puro) + DTO inferido do Zod (boundary)**.
+
 ### 2.1 `PATCH` para uma mudança parcial: o drag
 
 Mover um lead de estágio muda **um** campo (`stage`). O verbo HTTP certo para "atualização parcial" é
@@ -60,12 +68,18 @@ sem `try/catch` repetido. Uma rota lança; o handler formata.
 import { z } from "zod";
 import { LEAD_STAGES } from "../../domain/lead/stage";
 
-const leadContactSchema = z.object({
-  name: z.string().min(1), email: z.string().email(), phone: z.string().min(1), address: z.string().min(1),
-});
 export const leadInputSchema = z.object({
-  contact: leadContactSchema, source: z.string().optional(), notes: z.string().optional(),
+  name: z.string().min(1),
+  email: z.string().email(),
+  phone: z.string().min(1),
+  address: z.string().min(1),
+  source: z.string().optional(),
+  notes: z.string().optional(),
 });
+
+// O TIPO do input nasce do schema — uma fonte da verdade para o contrato de entrada.
+export type LeadInput = z.infer<typeof leadInputSchema>;
+
 export const stageSchema = z.object({ stage: z.enum(LEAD_STAGES as [string, ...string[]]) });
 ```
 
@@ -102,7 +116,7 @@ import { describe, expect, it } from "vitest";
 import { buildServer } from "../../infra/http/build-server";
 import { fakeDeps } from "../../infra/http/build-server.test"; // agora inclui FakeLeadStore
 
-const lead = { contact: { name: "Helena", email: "h@x.com", phone: "1", address: "rua 1" }, source: "website" };
+const lead = { name: "Helena", email: "h@x.com", phone: "1", address: "rua 1", source: "website" };
 
 it("POST cria em new_lead; PATCH move; PATCH inexistente -> 404", async () => {
   const app = buildServer(fakeDeps());

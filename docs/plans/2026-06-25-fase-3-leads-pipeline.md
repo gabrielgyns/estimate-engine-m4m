@@ -54,7 +54,7 @@ Vitest; React 19, Vite, Tailwind v4, react-router, TanStack Query, `@dnd-kit/cor
 
 **Interfaces:**
 - Consumes: nada do projeto (domínio puro).
-- Produces: `LeadStage`, `LeadContact`, `Lead`, `LeadSummary`; `LeadNotFoundError`; `LEAD_STAGES`,
+- Produces: `LeadStage`, `Lead` (contato em campos planos), `LeadSummary`; `LeadNotFoundError`; `LEAD_STAGES`,
   `EstimateEvent`, `stageForEstimateEvent(event)`, `isTerminal(stage)`, `nextStage(current, event)`.
 
 - [ ] **Step 1: Tipos**
@@ -64,16 +64,13 @@ Vitest; React 19, Vite, Tailwind v4, react-router, TanStack Query, `@dnd-kit/cor
 ```ts
 export type LeadStage = "new_lead" | "contacted" | "estimate_sent" | "won" | "lost";
 
-export interface LeadContact {
+// Contato em campos PLANOS (o lead é dado vivo/consultável -> colunas, não jsonb).
+export interface Lead {
+  id: string;
   name: string;
   email: string;
   phone: string;
   address: string;
-}
-
-export interface Lead {
-  id: string;
-  contact: LeadContact;
   source: string | null;
   notes: string | null;
   stage: LeadStage;
@@ -83,7 +80,7 @@ export interface Lead {
 
 export interface LeadSummary {
   id: string;
-  name: string; // contact.name
+  name: string;
   stage: LeadStage;
   createdAt: string;
 }
@@ -200,7 +197,7 @@ git commit -m "feat(lead): domain types, errors and stage helpers (nextStage)"
 - Modify: `src/modules/estimates/repository.ts`
 
 **Interfaces:**
-- Consumes: `LeadContact`, `LeadStage`.
+- Consumes: `LeadStage`.
 - Produces: tabela `leads` + enum `leadStage`; coluna `leadId` em `estimates`; `Estimate.leadId: string | null`;
   `NewEstimate.leadId: string`; `EstimateRepository.listByLead(leadId): Promise<EstimateSummary[]>`.
 
@@ -210,14 +207,16 @@ git commit -m "feat(lead): domain types, errors and stage helpers (nextStage)"
 
 ```ts
 import { sql } from "drizzle-orm";
-import { jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import type { LeadContact } from "../../../domain/lead/types";
+import { pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const leadStage = pgEnum("lead_stage", ["new_lead", "contacted", "estimate_sent", "won", "lost"]);
 
 export const leads = pgTable("leads", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  contact: jsonb("contact").$type<LeadContact>().notNull(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  address: text("address").notNull(),
   source: text("source"),
   notes: text("notes"),
   stage: leadStage("stage").notNull().default("new_lead"),
@@ -331,8 +330,8 @@ git commit -m "feat(lead): leads schema and lead_id on estimates"
 **Interfaces:**
 - Consumes: singleton `db`, tabela `leads`, tipos do domínio lead.
 - Produces:
-  - `type NewLead = { contact: LeadContact; source: string | null; notes: string | null }`.
-  - `type LeadPatch = Partial<{ contact: LeadContact; source: string | null; notes: string | null }>`.
+  - `type NewLead = { name: string; email: string; phone: string; address: string; source: string | null; notes: string | null }`.
+  - `type LeadPatch = Partial<NewLead>`.
   - `interface LeadStore { create(d: NewLead): Promise<Lead>; list(): Promise<LeadSummary[]>; getById(id: string): Promise<Lead | null>; update(id: string, patch: LeadPatch): Promise<Lead>; updateStage(id: string, stage: LeadStage): Promise<Lead> }`.
   - `class LeadRepository implements LeadStore`.
 
@@ -347,27 +346,27 @@ import { leads } from "../../infra/db/schemas/leads";
 import { LeadRepository } from "./repository";
 
 const url = process.env.DATABASE_URL;
-const contact = { name: "Helena", email: "h@x.com", phone: "1", address: "rua 1" };
+const base = { name: "Helena", email: "h@x.com", phone: "1", address: "rua 1" };
 
 describe.skipIf(!url)("LeadRepository", () => {
   const repo = new LeadRepository(db);
   beforeEach(async () => { await db.delete(leads); });
 
   it("cria em new_lead e relê", async () => {
-    const created = await repo.create({ contact, source: "website", notes: null });
+    const created = await repo.create({ ...base, source: "website", notes: null });
     expect(created.id).toBeTruthy();
     expect(created.stage).toBe("new_lead");
-    expect((await repo.getById(created.id))?.contact.name).toBe("Helena");
+    expect((await repo.getById(created.id))?.name).toBe("Helena");
   });
 
   it("move de estágio", async () => {
-    const created = await repo.create({ contact, source: null, notes: null });
+    const created = await repo.create({ ...base, source: null, notes: null });
     const moved = await repo.updateStage(created.id, "contacted");
     expect(moved.stage).toBe("contacted");
   });
 
   it("lista summaries", async () => {
-    await repo.create({ contact, source: null, notes: null });
+    await repo.create({ ...base, source: null, notes: null });
     const rows = await repo.list();
     expect(rows[0].name).toBe("Helena");
     expect(rows[0].stage).toBe("new_lead");
@@ -388,10 +387,10 @@ Expected: FAIL (`Cannot find module './repository'`).
 import { desc, eq } from "drizzle-orm";
 import { db } from "../../infra/db";
 import { leads } from "../../infra/db/schemas/leads";
-import type { Lead, LeadContact, LeadStage, LeadSummary } from "../../domain/lead/types";
+import type { Lead, LeadStage, LeadSummary } from "../../domain/lead/types";
 
-export type NewLead = { contact: LeadContact; source: string | null; notes: string | null };
-export type LeadPatch = Partial<{ contact: LeadContact; source: string | null; notes: string | null }>;
+export type NewLead = { name: string; email: string; phone: string; address: string; source: string | null; notes: string | null };
+export type LeadPatch = Partial<NewLead>;
 
 export interface LeadStore {
   create(data: NewLead): Promise<Lead>;
@@ -404,10 +403,14 @@ export interface LeadStore {
 export type Db = typeof db;
 type Row = typeof leads.$inferSelect;
 
+// Domínio e banco são planos -> o mapper só ajusta os timestamps (Date -> ISO string).
 function toLead(row: Row): Lead {
   return {
     id: row.id,
-    contact: row.contact,
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    address: row.address,
     source: row.source,
     notes: row.notes,
     stage: row.stage,
@@ -427,7 +430,7 @@ export class LeadRepository implements LeadStore {
   async list(): Promise<LeadSummary[]> {
     const rows = await this.db.select().from(leads).orderBy(desc(leads.createdAt));
     return rows.map((row) => ({
-      id: row.id, name: row.contact.name, stage: row.stage, createdAt: row.createdAt.toISOString(),
+      id: row.id, name: row.name, stage: row.stage, createdAt: row.createdAt.toISOString(),
     }));
   }
 
@@ -467,6 +470,7 @@ git commit -m "feat(lead): repository (CRUD + updateStage)"
 ### Task 4: Services — lead service + estimate service (create-from-lead + auto-avanço)
 
 **Files:**
+- Create: `src/modules/leads/schema.ts`
 - Create: `src/modules/leads/service.ts`
 - Test: `src/modules/leads/service.test.ts`
 - Modify: `src/modules/estimates/service.ts`
@@ -475,20 +479,40 @@ git commit -m "feat(lead): repository (CRUD + updateStage)"
 **Interfaces:**
 - Consumes: `LeadStore`, `nextStage`, `LeadNotFoundError`, `calculate`, `EstimateStore`, `ConfigStore`.
 - Produces:
+  - `leadInputSchema` (Zod) + `type LeadInput = z.infer<typeof leadInputSchema>` (DTO inferido) + `stageSchema`.
   - Lead service: `LeadDeps = { leads: LeadStore }`; `createLead(deps, dto)`, `updateLead(deps, id, dto)`, `moveStage(deps, id, stage)`, `getLeadOr404(store, id)`.
   - Estimate service (alterado): `EstimateDeps = { estimates: EstimateStore; config: ConfigStore; leads: LeadStore }`; `EstimateInputDto = { leadId: string; input: QuoteInput }`; `EstimateUpdateDto = { input: QuoteInput }`. `createEstimate` cria a partir do lead; `sendEstimate/acceptByToken/declineByToken` auto-avançam o lead.
 
-- [ ] **Step 1: Lead service**
+- [ ] **Step 1: Schema Zod (DTO inferido) + lead service**
+
+`src/modules/leads/schema.ts` — o input nasce do Zod; o tipo do DTO sai por `z.infer` (uma fonte da verdade do contrato de entrada):
+
+```ts
+import { z } from "zod";
+import { LEAD_STAGES } from "../../domain/lead/stage";
+
+export const leadInputSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  phone: z.string().min(1),
+  address: z.string().min(1),
+  source: z.string().optional(),
+  notes: z.string().optional(),
+});
+export type LeadInput = z.infer<typeof leadInputSchema>;
+
+export const stageSchema = z.object({ stage: z.enum(LEAD_STAGES as [string, ...string[]]) });
+```
 
 `src/modules/leads/service.ts`:
 
 ```ts
 import { LeadNotFoundError } from "../../domain/lead/errors";
-import type { Lead, LeadContact, LeadStage } from "../../domain/lead/types";
-import type { LeadStore } from "./repository";
+import type { Lead, LeadStage } from "../../domain/lead/types";
+import type { LeadStore, NewLead } from "./repository";
+import type { LeadInput } from "./schema";
 
 export type LeadDeps = { leads: LeadStore };
-export type LeadInputDto = { contact: LeadContact; source?: string; notes?: string };
 
 export async function getLeadOr404(store: LeadStore, id: string): Promise<Lead> {
   const lead = await store.getById(id);
@@ -496,13 +520,21 @@ export async function getLeadOr404(store: LeadStore, id: string): Promise<Lead> 
   return lead;
 }
 
-export function createLead(deps: LeadDeps, dto: LeadInputDto): Promise<Lead> {
-  return deps.leads.create({ contact: dto.contact, source: dto.source ?? null, notes: dto.notes ?? null });
+// Normaliza o DTO (source/notes opcionais) para o NewLead do repo (string | null).
+function toNewLead(dto: LeadInput): NewLead {
+  return {
+    name: dto.name, email: dto.email, phone: dto.phone, address: dto.address,
+    source: dto.source ?? null, notes: dto.notes ?? null,
+  };
 }
 
-export async function updateLead(deps: LeadDeps, id: string, dto: LeadInputDto): Promise<Lead> {
+export function createLead(deps: LeadDeps, dto: LeadInput): Promise<Lead> {
+  return deps.leads.create(toNewLead(dto));
+}
+
+export async function updateLead(deps: LeadDeps, id: string, dto: LeadInput): Promise<Lead> {
   await getLeadOr404(deps.leads, id);
-  return deps.leads.update(id, { contact: dto.contact, source: dto.source ?? null, notes: dto.notes ?? null });
+  return deps.leads.update(id, toNewLead(dto));
 }
 
 export async function moveStage(deps: LeadDeps, id: string, stage: LeadStage): Promise<Lead> {
@@ -528,7 +560,7 @@ describe("estimate service (Fase 3)", () => {
   beforeEach(async () => {
     deps = { estimates: new FakeEstimateStore(), config: new FakeConfigStore(), leads: new FakeLeadStore() };
     const lead = await deps.leads.create({
-      contact: { name: "Helena", email: "h@x.com", phone: "1", address: "rua 1" }, source: null, notes: null,
+      name: "Helena", email: "h@x.com", phone: "1", address: "rua 1", source: null, notes: null,
     });
     leadId = lead.id;
   });
@@ -604,7 +636,8 @@ export async function createEstimate(deps: EstimateDeps, dto: EstimateInputDto):
   const breakdown = calculate(dto.input, config);
   return deps.estimates.create({
     leadId: dto.leadId,
-    customer: lead.contact, // snapshot prefillado do lead
+    // snapshot prefillado dos campos do lead
+    customer: { name: lead.name, email: lead.email, phone: lead.phone, address: lead.address },
     input: dto.input,
     breakdown,
     publicToken: generatePublicToken(),
@@ -693,10 +726,10 @@ class FakeLeadStore {
   seq = 0;
   async create(d: NewLead): Promise<Lead> {
     const now = new Date().toISOString();
-    const l: Lead = { id: `lead-${++this.seq}`, contact: d.contact, source: d.source, notes: d.notes, stage: "new_lead", createdAt: now, updatedAt: now };
+    const l: Lead = { id: `lead-${++this.seq}`, name: d.name, email: d.email, phone: d.phone, address: d.address, source: d.source, notes: d.notes, stage: "new_lead", createdAt: now, updatedAt: now };
     this.rows.push(l); return l;
   }
-  async list() { return this.rows.map((r) => ({ id: r.id, name: r.contact.name, stage: r.stage, createdAt: r.createdAt })); }
+  async list() { return this.rows.map((r) => ({ id: r.id, name: r.name, stage: r.stage, createdAt: r.createdAt })); }
   async getById(id: string) { return this.rows.find((r) => r.id === id) ?? null; }
   async update(id: string, patch: LeadPatch) { const r = this.rows.find((x) => x.id === id)!; Object.assign(r, patch); return r; }
   async updateStage(id: string, stage: LeadStage) { const r = this.rows.find((x) => x.id === id)!; r.stage = stage; return r; }
@@ -734,7 +767,7 @@ import { createLead, moveStage } from "./service";
 
 it("cria lead em new_lead", async () => {
   const deps = { leads: new FakeLeadStore() };
-  const l = await createLead(deps, { contact: { name: "Ana", email: "a@x.com", phone: "1", address: "a" } });
+  const l = await createLead(deps, { name: "Ana", email: "a@x.com", phone: "1", address: "a" });
   expect(l.stage).toBe("new_lead");
 });
 
@@ -810,29 +843,11 @@ export function fakeDeps() {
 }
 ```
 
-- [ ] **Step 4: Schema Zod de leads**
+- [ ] **Step 4: Schema Zod de leads (já criado na Task 4)**
 
-`src/modules/leads/schema.ts`:
-
-```ts
-import { z } from "zod";
-import { LEAD_STAGES } from "../../domain/lead/stage";
-
-const leadContactSchema = z.object({
-  name: z.string().min(1), email: z.string().email(),
-  phone: z.string().min(1), address: z.string().min(1),
-});
-
-export const leadInputSchema = z.object({
-  contact: leadContactSchema,
-  source: z.string().optional(),
-  notes: z.string().optional(),
-});
-
-export const stageSchema = z.object({
-  stage: z.enum(LEAD_STAGES as [string, ...string[]]),
-});
-```
+`src/modules/leads/schema.ts` já foi criado na Task 4 (campos planos + `leadInputSchema` +
+`type LeadInput = z.infer<...>` + `stageSchema`). As rotas (Step 8) só importam dele. Confira que
+ele existe e exporta `leadInputSchema` e `stageSchema`.
 
 - [ ] **Step 5: Mudar o schema de estimate (exigir leadId, remover customer)**
 
@@ -857,7 +872,7 @@ import { describe, expect, it } from "vitest";
 import { buildServer } from "../../infra/http/build-server";
 import { fakeDeps } from "../../infra/http/build-server.test";
 
-const lead = { contact: { name: "Helena", email: "h@x.com", phone: "1", address: "rua 1" }, source: "website" };
+const lead = { name: "Helena", email: "h@x.com", phone: "1", address: "rua 1", source: "website" };
 
 describe("rotas de leads", () => {
   it("POST cria em new_lead; GET lista", async () => {
@@ -959,7 +974,7 @@ como `leadId` no payload. O caso "PUT recalcula" passa a mandar só `{ input }`:
 ```ts
 async function newLeadId(app) {
   const r = await app.inject({ method: "POST", url: "/api/leads",
-    payload: { contact: { name: "Helena", email: "h@x.com", phone: "1", address: "rua 1" } } });
+    payload: { name: "Helena", email: "h@x.com", phone: "1", address: "rua 1" } });
   return r.json().id as string;
 }
 // POST /api/estimates payload: { leadId, input: {...} }
@@ -1004,7 +1019,7 @@ git commit -m "feat(lead): HTTP routes, estimate create requires leadId, server 
 
 **Interfaces:**
 - Consumes: `api` (Fase 1), tipos de estimate (Fase 2).
-- Produces: tipos `LeadStage`/`LeadContact`/`Lead`/`LeadSummary`; `LEAD_STAGES`; funções de API de lead;
+- Produces: tipos `LeadStage`/`Lead`/`LeadSummary`; `LEAD_STAGES`; funções de API de lead;
   `createEstimate` passa a receber `{ leadId, input }`; rotas `/pipeline`, `/leads/:id`, `/leads/new`.
 
 - [ ] **Step 1: Tipos**
@@ -1017,9 +1032,9 @@ export const LEAD_STAGES: LeadStage[] = ["new_lead", "contacted", "estimate_sent
 export const STAGE_LABELS: Record<LeadStage, string> = {
   new_lead: "New", contacted: "Contacted", estimate_sent: "Estimate sent", won: "Won", lost: "Lost",
 };
-export interface LeadContact { name: string; email: string; phone: string; address: string }
 export interface Lead {
-  id: string; contact: LeadContact; source: string | null; notes: string | null;
+  id: string; name: string; email: string; phone: string; address: string;
+  source: string | null; notes: string | null;
   stage: LeadStage; createdAt: string; updatedAt: string;
 }
 export interface LeadSummary { id: string; name: string; stage: LeadStage; createdAt: string }
@@ -1031,10 +1046,10 @@ export interface LeadSummary { id: string; name: string; stage: LeadStage; creat
 
 ```ts
 import { api } from "./api";
-import type { Lead, LeadContact, LeadStage, LeadSummary } from "../types/lead";
+import type { Lead, LeadStage, LeadSummary } from "../types/lead";
 import type { EstimateSummary } from "../types/estimate";
 
-type LeadInput = { contact: LeadContact; source?: string; notes?: string };
+type LeadInput = { name: string; email: string; phone: string; address: string; source?: string; notes?: string };
 
 export async function createLead(dto: LeadInput): Promise<Lead> { return (await api.post("/leads", dto)).data; }
 export async function listLeads(): Promise<LeadSummary[]> { return (await api.get("/leads")).data; }
@@ -1208,18 +1223,17 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { createLead } from "../lib/leads";
-import type { LeadContact } from "../types/lead";
 
 export function NewLeadPage() {
   const navigate = useNavigate();
-  const [contact, setContact] = useState<LeadContact>({ name: "", email: "", phone: "", address: "" });
-  const save = useMutation({ mutationFn: () => createLead({ contact }), onSuccess: (l) => navigate(`/leads/${l.id}`) });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", address: "" });
+  const save = useMutation({ mutationFn: () => createLead(form), onSuccess: (l) => navigate(`/leads/${l.id}`) });
   return (
     <div className="mx-auto max-w-md space-y-2 p-6">
       <h1 className="text-xl font-semibold">Novo lead</h1>
       {(["name", "email", "phone", "address"] as const).map((f) => (
-        <input key={f} placeholder={f} value={contact[f]}
-          onChange={(e) => setContact((c) => ({ ...c, [f]: e.target.value }))}
+        <input key={f} placeholder={f} value={form[f]}
+          onChange={(e) => setForm((c) => ({ ...c, [f]: e.target.value }))}
           className="w-full rounded-lg bg-zinc-900 p-2" />
       ))}
       <button type="button" onClick={() => save.mutate()} className="rounded-lg bg-blue-600 px-4 py-2">Salvar</button>
@@ -1249,10 +1263,10 @@ export function LeadDetailPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{l.contact.name}</h1>
+        <h1 className="text-xl font-semibold">{l.name}</h1>
         <span className="text-xs uppercase text-zinc-400">{STAGE_LABELS[l.stage]}</span>
       </div>
-      <p className="text-sm text-zinc-400">{l.contact.email} · {l.contact.phone} · {l.contact.address}</p>
+      <p className="text-sm text-zinc-400">{l.email} · {l.phone} · {l.address}</p>
       <Link to={`/?leadId=${l.id}`} className="inline-block rounded-lg bg-blue-600 px-4 py-2">
         Nova estimate para este lead
       </Link>

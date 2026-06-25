@@ -64,8 +64,7 @@ export const LEAD_STAGES: LeadStage[] = ["new_lead", "contacted", "estimate_sent
 export const STAGE_LABELS: Record<LeadStage, string> = {
   new_lead: "New", contacted: "Contacted", estimate_sent: "Estimate sent", won: "Won", lost: "Lost",
 };
-export interface LeadContact { name: string; email: string; phone: string; address: string }
-export interface Lead { id: string; contact: LeadContact; source: string | null; notes: string | null; stage: LeadStage; createdAt: string; updatedAt: string }
+export interface Lead { id: string; name: string; email: string; phone: string; address: string; source: string | null; notes: string | null; stage: LeadStage; createdAt: string; updatedAt: string }
 export interface LeadSummary { id: string; name: string; stage: LeadStage; createdAt: string }
 ```
 

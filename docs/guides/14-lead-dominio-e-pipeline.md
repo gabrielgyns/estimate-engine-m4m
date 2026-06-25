@@ -66,11 +66,14 @@ em milissegundos, e a regra mora num lugar só.
 // src/domain/lead/types.ts
 export type LeadStage = "new_lead" | "contacted" | "estimate_sent" | "won" | "lost";
 
-export interface LeadContact { name: string; email: string; phone: string; address: string }
-
+// Contato em campos PLANOS: o lead é dado vivo/consultável (busca por email, filtro por nome),
+// então vira colunas no banco — não jsonb. (jsonb fica para snapshot, como o customer da estimate.)
 export interface Lead {
   id: string;
-  contact: LeadContact;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
   source: string | null; // ex.: "website", "referral" — opcional
   notes: string | null;
   stage: LeadStage;
@@ -80,7 +83,7 @@ export interface Lead {
 
 export interface LeadSummary { // card do Kanban
   id: string;
-  name: string; // contact.name
+  name: string;
   stage: LeadStage;
   createdAt: string;
 }
@@ -187,7 +190,7 @@ git commit -m "feat(lead): domain types, errors and stage helpers (nextStage)"
 
 ## 7. Checklist de conclusão
 
-- [ ] `LeadStage`, `LeadContact`, `Lead`, `LeadSummary` definidos.
+- [ ] `LeadStage`, `Lead` (campos de contato planos), `LeadSummary` definidos.
 - [ ] `LeadNotFoundError` com `this.name`.
 - [ ] `LEAD_STAGES`, `stageForEstimateEvent`, `isTerminal`, `nextStage` implementados.
 - [ ] `nextStage("won", "declined") === "won"` passa (a guarda).

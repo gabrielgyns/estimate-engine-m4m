@@ -16,6 +16,13 @@
 
 ## 2. Conceitos
 
+> **Colunas vs `jsonb` — o papel define o storage.** O contato do lead vira **colunas planas**
+> (`name`, `email`, `phone`, `address`), não `jsonb`. Por quê? Porque o lead é **dado vivo e
+> consultável**: você vai buscar por email, filtrar/ordenar por nome, talvez pôr um índice único.
+> `jsonb` serve para **snapshot** (o `customer`/`breakdown` da estimate, que congelam e nunca se
+> consulta isolado) — não para dado canônico que se edita e pesquisa. Mesmos campos, papéis
+> diferentes ⇒ storage diferente.
+
 ### 2.1 Relação 1—N e uma FK *nullable*
 
 `Lead 1 — N Estimate`: uma estimate **pertence** a um lead. No banco, isso é uma **foreign key**:
@@ -34,9 +41,10 @@ versionada do seu banco — cada uma é um passo para frente, reproduzível.
 ### 2.3 Onde o `customer` snapshot vem agora
 
 Na Fase 2, o `customer` da estimate era digitado na calculadora. Agora ele é **copiado do lead** no
-momento da criação (`createEstimate` lê `lead.contact` e grava como `customer`). Continua sendo um
-**snapshot** congelado: se o contato do lead mudar depois, estimates antigas não mudam. O lead é a
-origem; a estimate guarda a foto do momento.
+momento da criação: `createEstimate` monta o `customer` a partir dos campos planos do lead
+(`{ name: lead.name, email: lead.email, phone: lead.phone, address: lead.address }`) e grava como o
+snapshot da estimate. Continua sendo um **snapshot** congelado: se o contato do lead mudar depois,
+estimates antigas não mudam. O lead é a origem; a estimate guarda a foto do momento.
 
 ### 2.4 O seam: service compõe, não o repository
 
@@ -62,13 +70,15 @@ derrubar a operação principal.
 ```ts
 // src/infra/db/schemas/leads.ts (declarativo — mostrado por inteiro)
 import { sql } from "drizzle-orm";
-import { jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import type { LeadContact } from "../../../domain/lead/types";
+import { pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const leadStage = pgEnum("lead_stage", ["new_lead", "contacted", "estimate_sent", "won", "lost"]);
 export const leads = pgTable("leads", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  contact: jsonb("contact").$type<LeadContact>().notNull(),
+  name: text("name").notNull(),
+  email: text("email").notNull(), // .unique() se quiser garantir 1 lead por email
+  phone: text("phone").notNull(),
+  address: text("address").notNull(),
   source: text("source"),
   notes: text("notes"),
   stage: leadStage("stage").notNull().default("new_lead"),
@@ -89,8 +99,8 @@ leadId: uuid("lead_id").references(() => leads.id),
 
 ```ts
 // src/modules/leads/repository.ts
-export type NewLead = { contact: LeadContact; source: string | null; notes: string | null };
-export type LeadPatch = Partial<{ contact: LeadContact; source: string | null; notes: string | null }>;
+export type NewLead = { name: string; email: string; phone: string; address: string; source: string | null; notes: string | null };
+export type LeadPatch = Partial<NewLead>;
 
 export interface LeadStore {
   create(data: NewLead): Promise<Lead>;
@@ -167,8 +177,8 @@ Esperado: **FAIL** (contrato antigo `createEstimate(deps, { customer, input })`)
    `leadId: string` no `NewEstimate`. Implemente `EstimateRepository.listByLead`.
 3. **`LeadRepository`**: implemente os 5 métodos (reuse uma função `toLead` para o mapeamento Date→ISO).
 4. **Estimate service**: 
-   - `createEstimate`: `leads.getById(leadId)` (404 se `null`), copie `lead.contact` → `customer`,
-     `calculate`, `estimates.create({ leadId, customer, input, breakdown, publicToken })`.
+   - `createEstimate`: `leads.getById(leadId)` (404 se `null`), monte o `customer` a partir dos campos
+     planos do lead, `calculate`, `estimates.create({ leadId, customer, input, breakdown, publicToken })`.
    - `advanceLead(deps, leadId, event)`: se não há `leadId`/lead, pula; senão `nextStage` e, se mudou,
      `leads.updateStage`.
    - `sendEstimate/acceptByToken/declineByToken`: após a transição, chame `advanceLead` com o evento
