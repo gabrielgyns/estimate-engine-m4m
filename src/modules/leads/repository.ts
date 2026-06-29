@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/infra/db";
 import { leads } from "@/infra/db/schemas";
-import type { Lead } from "./schema";
+import type { CreateLead, Lead, UpdateLead } from "./schema";
 
 type LeadRow = typeof leads.$inferSelect;
 
@@ -40,4 +40,80 @@ export async function findLeadByIdForOrganization(
 
   const row = rows.at(0);
   return row ? toLead(row) : undefined;
+}
+
+export async function createLeadWithOrganization(
+  data: CreateLead,
+  organizationId: string
+): Promise<string> {
+  const [row] = await db
+    .insert(leads)
+    .values({
+      firstName: data.firstName,
+      lastName: data.lastName ?? null,
+      email: data.email ?? null,
+      phone: data.phone,
+      address: data.address ?? null,
+      zipCode: data.zipCode,
+      organizationId,
+    })
+    .returning({ id: leads.id });
+
+  return row.id;
+}
+
+export async function updateLeadByIdWithOrganization(
+  data: UpdateLead,
+  leadId: string,
+  organizationId: string
+): Promise<string | undefined> {
+  const values: Partial<typeof leads.$inferInsert> = {};
+
+  if ("firstName" in data) {
+    values.firstName = data.firstName;
+  }
+
+  if ("lastName" in data) {
+    values.lastName = data.lastName ?? null;
+  }
+
+  if ("email" in data) {
+    values.email = data.email ?? null;
+  }
+
+  if ("phone" in data) {
+    values.phone = data.phone;
+  }
+
+  if ("address" in data) {
+    values.address = data.address ?? null;
+  }
+
+  if ("zipCode" in data) {
+    values.zipCode = data.zipCode;
+  }
+
+  if ("stage" in data) {
+    values.leadStages = data.stage;
+  }
+
+  const [row] = await db
+    .update(leads)
+    .set(values)
+    .where(and(eq(leads.organizationId, organizationId), eq(leads.id, leadId)))
+    .returning({ leadId: leads.id });
+
+  return row?.leadId;
+}
+
+export async function deleteLeadByIdWithOrganization(
+  leadId: string,
+  organizationId: string
+): Promise<boolean> {
+  const [row] = await db
+    .delete(leads)
+    .where(and(eq(leads.organizationId, organizationId), eq(leads.id, leadId)))
+    .returning({ id: leads.id });
+
+  return Boolean(row);
 }

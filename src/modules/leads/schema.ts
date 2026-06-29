@@ -22,3 +22,27 @@ export const leadSchema = z.object({
 });
 
 export type Lead = z.infer<typeof leadSchema>;
+
+export const createLeadSchema = z.object({
+  firstName: z.string(),
+  lastName: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string(),
+  address: z.string().optional(),
+  zipCode: z.string(),
+  source: z.string().optional(),
+  otherInformation: z.string().optional(),
+});
+
+export type CreateLead = z.infer<typeof createLeadSchema>;
+
+export const updateLeadSchema = createLeadSchema
+  .extend({
+    stage: leadStageSchema.optional(),
+  })
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one field is required",
+  });
+
+export type UpdateLead = z.infer<typeof updateLeadSchema>;

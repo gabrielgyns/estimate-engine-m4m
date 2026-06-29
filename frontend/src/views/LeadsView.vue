@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useLeads } from "../composables/useLeads";
 import { fullName, type Lead } from "../lib/leads";
 import BaseAlert from "../components/ui/BaseAlert.vue";
 import BaseButton from "../components/ui/BaseButton.vue";
 
+const router = useRouter();
 const { leads, loading, error, refresh } = useLeads();
 const query = ref("");
+
+function openLead(id: string) {
+  router.push({ name: "lead-detail", params: { id } });
+}
 
 const filtered = computed<Lead[]>(() => {
   const term = query.value.trim().toLowerCase();
@@ -29,7 +35,7 @@ const filtered = computed<Lead[]>(() => {
 });
 
 function initials(lead: Lead): string {
-  return `${lead.firstName[0] ?? ""}${lead.lastName[0] ?? ""}`.toUpperCase();
+  return `${lead.firstName[0] ?? ""}${lead.lastName?.[0] ?? ""}`.toUpperCase();
 }
 
 function addressLine(lead: Lead): string {
@@ -139,11 +145,20 @@ function addressLine(lead: Lead): string {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="lead in filtered" :key="lead.id">
+          <tr
+            v-for="lead in filtered"
+            :key="lead.id"
+            class="row-link"
+            @click="openLead(lead.id)"
+          >
             <td>
               <div class="who">
                 <span class="badge">{{ initials(lead) }}</span>
-                <span class="name">{{ fullName(lead) }}</span>
+                <RouterLink
+                  class="name"
+                  :to="{ name: 'lead-detail', params: { id: lead.id } }"
+                  @click.stop
+                >{{ fullName(lead) }}</RouterLink>
               </div>
             </td>
             <td>
@@ -342,8 +357,17 @@ function addressLine(lead: Lead): string {
   color: var(--accent-ink);
   background: linear-gradient(150deg, var(--accent), var(--accent-2));
 }
+.row-link {
+  cursor: pointer;
+}
 .name {
   font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+}
+.name:hover {
+  color: var(--accent);
+  text-decoration: underline;
 }
 .stack {
   display: flex;

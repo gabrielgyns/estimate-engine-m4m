@@ -39,6 +39,16 @@ const routes: RouteRecordRaw[] = [
         component: () => import("../views/LeadCreateView.vue"),
       },
       {
+        path: "leads/:id",
+        name: "lead-detail",
+        component: () => import("../views/LeadDetailView.vue"),
+      },
+      {
+        path: "leads/:id/edit",
+        name: "lead-edit",
+        component: () => import("../views/LeadEditView.vue"),
+      },
+      {
         path: "organizations",
         name: "organizations",
         component: () => import("../views/OrganizationsView.vue"),

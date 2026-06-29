@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { reactive } from "vue";
-import { useRouter } from "vue-router";
+import { reactive, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useAsync } from "../composables/useAsync";
-import { createLead, type LeadInput } from "../lib/leads";
+import { useLead } from "../composables/useLead";
+import { type LeadInput, updateLead } from "../lib/leads";
 import BaseAlert from "../components/ui/BaseAlert.vue";
 import BaseButton from "../components/ui/BaseButton.vue";
 import BaseCard from "../components/ui/BaseCard.vue";
 import BaseField from "../components/ui/BaseField.vue";
 
+const route = useRoute();
 const router = useRouter();
-const { loading, error, run } = useAsync<{ leadId: string }>();
+const id = route.params.id as string;
+
+const { lead, loading, error: loadError } = useLead(id);
+const { loading: saving, error: saveError, run } = useAsync<{ leadId: string }>();
 
 const form = reactive({
   firstName: "",
@@ -20,9 +25,21 @@ const form = reactive({
   address: "",
 });
 
-// Build the payload that matches the backend `createLeadSchema`. Required fields
-// are always sent; optional ones are dropped when blank so we don't post empty
-// strings.
+// Prefill the form once the lead is loaded.
+watch(lead, (value) => {
+  if (!value) {
+    return;
+  }
+  form.firstName = value.firstName ?? "";
+  form.lastName = value.lastName ?? "";
+  form.email = value.email ?? "";
+  form.phone = value.phone ?? "";
+  form.zipCode = value.zipCode ?? "";
+  form.address = value.address ?? "";
+});
+
+// Required fields are always sent; optional ones are dropped when blank (the
+// backend resets absent optional fields to null, which is the desired "clear").
 function buildPayload(): LeadInput {
   const payload: LeadInput = {
     firstName: form.firstName.trim(),
@@ -40,9 +57,9 @@ function buildPayload(): LeadInput {
 }
 
 async function submit() {
-  const result = await run(() => createLead(buildPayload()));
+  const result = await run(() => updateLead(id, buildPayload()));
   if (result) {
-    await router.push({ name: "lead-detail", params: { id: result.leadId } });
+    await router.push({ name: "lead-detail", params: { id } });
   }
 }
 </script>
@@ -50,7 +67,7 @@ async function submit() {
 <template>
   <div class="page">
     <header class="page-head">
-      <RouterLink class="back" :to="{ name: 'leads' }">
+      <RouterLink class="back" :to="{ name: 'lead-detail', params: { id } }">
         <svg
           width="16"
           height="16"
@@ -64,13 +81,17 @@ async function submit() {
         >
           <path d="m15 18-6-6 6-6" />
         </svg>
-        Leads
+        Lead
       </RouterLink>
-      <h1>Novo lead</h1>
-      <p class="lead">Cadastre um contato para gerar orçamentos.</p>
+      <h1>Editar lead</h1>
+      <p class="lead">Atualize os dados do contato.</p>
     </header>
 
-    <BaseCard class="form-card">
+    <BaseAlert v-if="loadError" tone="error">{{ loadError }}</BaseAlert>
+
+    <div v-else-if="loading" class="state">Carregando lead…</div>
+
+    <BaseCard v-else-if="lead" class="form-card">
       <form @submit.prevent="submit">
         <div class="row">
           <BaseField
@@ -115,20 +136,22 @@ async function submit() {
           placeholder="Av. Paulista, 1000"
         />
 
-        <BaseAlert v-if="error">{{ error }}</BaseAlert>
+        <BaseAlert v-if="saveError">{{ saveError }}</BaseAlert>
 
         <div class="actions">
           <BaseButton
             variant="subtle"
             type="button"
-            @click="$router.push({ name: 'leads' })"
+            @click="$router.push({ name: 'lead-detail', params: { id } })"
           >
             Cancelar
           </BaseButton>
-          <BaseButton type="submit" :loading="loading">Criar lead</BaseButton>
+          <BaseButton type="submit" :loading="saving">Salvar alterações</BaseButton>
         </div>
       </form>
     </BaseCard>
+
+    <div v-else class="state">Lead não encontrado.</div>
   </div>
 </template>
 
@@ -154,6 +177,12 @@ async function submit() {
 }
 .lead {
   margin: 0.35rem 0 0;
+  color: var(--text-muted);
+}
+
+.state {
+  padding: 2.5rem 1rem;
+  text-align: center;
   color: var(--text-muted);
 }
 
