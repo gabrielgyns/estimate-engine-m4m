@@ -7,6 +7,7 @@ import {
 import { loggerOptions } from "./infra/http/logger-options";
 import { registerCors } from "./infra/http/plugins/cors";
 import { authRoutes } from "./modules/auth/routes";
+import { estimatesRoutes } from "./modules/estimates/routes";
 import { leadsRoutes } from "./modules/leads/routes";
 
 const server = fastify({
@@ -23,6 +24,7 @@ registerCors(server);
 server.get("/ping", async (_request, _reply) => "pong\n");
 server.register(authRoutes);
 server.register(leadsRoutes);
+server.register(estimatesRoutes);
 
 server.listen({ port: 8080 }, (err) => {
   if (err) {

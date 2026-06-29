@@ -15,6 +15,13 @@
       "when": 1782418020323,
       "tag": "0001_skinny_solo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782763908419,
+      "tag": "0002_freezing_klaw",
+      "breakpoints": true
     }
   ]
 }
